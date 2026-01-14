@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import type { User, Power } from "@/lib/types"
 import { useApp } from "@/lib/context/app-context"
@@ -16,8 +18,9 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Edit, Trash2, Award } from "lucide-react"
+import { Plus, Search, Edit, Trash2, Award, File } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { handleFileUpload, getFileInfo, downloadFile } from "@/lib/file-utils"
 
 export default function PowersPage() {
   const { entities, powers, addPower, updatePower, deletePower } = useApp()
@@ -29,11 +32,12 @@ export default function PowersPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [selectedPower, setSelectedPower] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [uploadedFile, setUploadedFile] = useState<string>("")
 
   const [formData, setFormData] = useState({
     entityId: "",
     powerType: "",
-    attorneys: [""], // Changed to array with one empty attorney to start
+    attorneys: [""],
     grantDate: "",
     document: "",
   })
@@ -76,6 +80,7 @@ export default function PowersPage() {
 
     addPower(newPower)
     setIsAddDialogOpen(false)
+    setUploadedFile("")
     setFormData({ entityId: "", powerType: "", attorneys: [""], grantDate: "", document: "" })
     toast({
       title: "Poder registrado",
@@ -126,8 +131,18 @@ export default function PowersPage() {
         document: power.document || "",
       })
       setEditingId(id)
+      setUploadedFile(power.document || "")
       setIsEditDialogOpen(true)
     }
+  }
+
+  const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const uploaded = await handleFileUpload(file)
+    setUploadedFile(uploaded)
+    setFormData({ ...formData, document: uploaded })
   }
 
   const canEdit = currentUser?.role === "Administrador" || currentUser?.role === "Editor"
@@ -236,12 +251,24 @@ export default function PowersPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="document">Documento Digital (PDF o WORD)</Label>
+                  <Label htmlFor="document">Documento del Poder</Label>
                   <Input
-                    id="document"
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={handleDocFileUpload}
+                    className="cursor-pointer"
+                  />
+                  {uploadedFile && (
+                    <p className="text-sm text-muted-foreground">Archivo cargado: {getFileInfo(uploadedFile)?.name}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="document-ref">Referencia del Documento</Label>
+                  <Input
+                    id="document-ref"
                     value={formData.document}
                     onChange={(e) => setFormData({ ...formData, document: e.target.value })}
-                    placeholder="Nombre del archivo (simulado)"
+                    placeholder="Escritura pública, acta notarial"
                   />
                 </div>
               </div>
@@ -332,6 +359,12 @@ export default function PowersPage() {
                         <Button variant="outline" size="sm" onClick={() => handleDelete(power.id)}>
                           <Trash2 className="w-4 h-4 mr-1" />
                           Eliminar
+                        </Button>
+                      )}
+                      {power.document && getFileInfo(power.document)?.data && (
+                        <Button variant="outline" size="sm" onClick={() => downloadFile(power.document)}>
+                          <File className="w-4 h-4 mr-1" />
+                          Descargar Documento
                         </Button>
                       )}
                     </div>
@@ -433,7 +466,14 @@ export default function PowersPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Documento Digital</Label>
+              <Label>Documento del Poder</Label>
+              <Input type="file" accept=".pdf,.doc,.docx" onChange={handleDocFileUpload} className="cursor-pointer" />
+              {uploadedFile && (
+                <p className="text-sm text-muted-foreground">Archivo cargado: {getFileInfo(uploadedFile)?.name}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Referencia del Documento</Label>
               <Input
                 value={formData.document}
                 onChange={(e) => setFormData({ ...formData, document: e.target.value })}

@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import type { User } from "@/lib/types"
 import { useApp } from "@/lib/context/app-context"
@@ -10,8 +12,9 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Edit, Trash2, UserCog } from "lucide-react"
+import { Plus, Search, Edit, Trash2, UserCog, File } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { handleFileUpload, getFileInfo, downloadFile } from "@/lib/file-utils"
 
 export default function DirectorsPage() {
   const { entities, directors, addDirector, updateDirector, deleteDirector } = useApp()
@@ -22,6 +25,7 @@ export default function DirectorsPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [selectedDirector, setSelectedDirector] = useState<string | null>(null)
+  const [uploadedFile, setUploadedFile] = useState<string>("")
 
   const [formData, setFormData] = useState({
     entityId: "",
@@ -66,6 +70,7 @@ export default function DirectorsPage() {
       description: "El responsable ha sido registrado correctamente",
     })
     setIsAddDialogOpen(false)
+    setUploadedFile("")
     setFormData({
       entityId: "",
       name: "",
@@ -113,11 +118,21 @@ export default function DirectorsPage() {
     if (director) {
       setFormData(director)
       setSelectedDirector(id)
+      setUploadedFile(director.supportDocument || "")
       setIsEditDialogOpen(true)
     }
   }
 
   const canEdit = currentUser?.role === "Administrador" || currentUser?.role === "Editor"
+
+  const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const uploaded = await handleFileUpload(file)
+    setUploadedFile(uploaded)
+    setFormData({ ...formData, supportDocument: uploaded })
+  }
 
   return (
     <div className="space-y-6">
@@ -200,10 +215,22 @@ export default function DirectorsPage() {
                 <div className="space-y-2">
                   <Label htmlFor="supportDocument">Documento Soporte</Label>
                   <Input
-                    id="supportDocument"
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={handleDocFileUpload}
+                    className="cursor-pointer"
+                  />
+                  {uploadedFile && (
+                    <p className="text-sm text-muted-foreground">Archivo cargado: {getFileInfo(uploadedFile)?.name}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="supportDocument-text">Referencia del Documento</Label>
+                  <Input
+                    id="supportDocument-text"
                     value={formData.supportDocument}
                     onChange={(e) => setFormData({ ...formData, supportDocument: e.target.value })}
-                    placeholder="Nombramiento, oficio"
+                    placeholder="Acta, oficio, decreto"
                   />
                 </div>
               </div>
@@ -302,6 +329,12 @@ export default function DirectorsPage() {
                           Eliminar
                         </Button>
                       )}
+                      {director.supportDocument && getFileInfo(director.supportDocument)?.data && (
+                        <Button variant="outline" size="sm" onClick={() => downloadFile(director.supportDocument)}>
+                          <File className="w-4 h-4 mr-1" />
+                          Descargar Documento
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -375,13 +408,20 @@ export default function DirectorsPage() {
                 <Label>Fecha de Conclusión</Label>
                 <Input
                   type="date"
-                  value={formData.endDate || ""}
+                  value={formData.endDate}
                   onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                 />
               </div>
             </div>
             <div className="space-y-2">
               <Label>Documento Soporte</Label>
+              <Input type="file" accept=".pdf,.doc,.docx" onChange={handleDocFileUpload} className="cursor-pointer" />
+              {uploadedFile && (
+                <p className="text-sm text-muted-foreground">Archivo cargado: {getFileInfo(uploadedFile)?.name}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Referencia del Documento</Label>
               <Input
                 value={formData.supportDocument}
                 onChange={(e) => setFormData({ ...formData, supportDocument: e.target.value })}

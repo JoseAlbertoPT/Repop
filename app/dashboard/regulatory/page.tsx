@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import type { User } from "@/lib/types"
 import { useApp } from "@/lib/context/app-context"
@@ -20,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, Search, Edit, Trash2, FileText, File } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { handleFileUpload, getFileInfo, downloadFile } from "@/lib/file-utils"
 
 export default function RegulatoryPage() {
   const { entities, regulatoryDocs, addRegulatoryDoc, updateRegulatoryDoc, deleteRegulatoryDoc } = useApp()
@@ -30,6 +33,7 @@ export default function RegulatoryPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null)
+  const [uploadedFile, setUploadedFile] = useState<string>("")
 
   const [formData, setFormData] = useState({
     entityId: "",
@@ -58,37 +62,20 @@ export default function RegulatoryPage() {
 
   const handleAdd = () => {
     if (!formData.entityId || !formData.type) {
-      toast({
-        title: "Error",
-        description: "Por favor complete los campos requeridos",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: "Complete los campos requeridos", variant: "destructive" })
       return
     }
-
     addRegulatoryDoc(formData)
-    toast({
-      title: "Documento registrado",
-      description: "El marco normativo ha sido registrado correctamente",
-    })
     setIsAddDialogOpen(false)
-    setFormData({
-      entityId: "",
-      type: "",
-      issueDate: "",
-      validity: "",
-      file: "",
-      notes: "",
-    })
+    resetForm()
+    setUploadedFile("")
+    toast({ title: "Éxito", description: "Documento registrado" })
   }
 
   const handleEdit = () => {
     if (selectedDoc) {
       updateRegulatoryDoc(selectedDoc, formData)
-      toast({
-        title: "Actualizado",
-        description: "El documento ha sido actualizado correctamente",
-      })
+      toast({ title: "Actualizado", description: "El documento ha sido actualizado correctamente" })
       setIsEditDialogOpen(false)
       setSelectedDoc(null)
     }
@@ -106,10 +93,7 @@ export default function RegulatoryPage() {
 
     if (confirm("¿Está seguro de eliminar este documento?")) {
       deleteRegulatoryDoc(id)
-      toast({
-        title: "Eliminado",
-        description: "El documento ha sido eliminado",
-      })
+      toast({ title: "Eliminado", description: "El documento ha sido eliminado" })
     }
   }
 
@@ -123,6 +107,26 @@ export default function RegulatoryPage() {
   }
 
   const canEdit = currentUser?.role === "Administrador" || currentUser?.role === "Editor"
+
+  const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const uploaded = await handleFileUpload(file)
+    setUploadedFile(uploaded)
+    setFormData({ ...formData, file: uploaded })
+  }
+
+  const resetForm = () => {
+    setFormData({
+      entityId: "",
+      type: "",
+      issueDate: "",
+      validity: "",
+      file: "",
+      notes: "",
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -172,34 +176,26 @@ export default function RegulatoryPage() {
                     placeholder="Reglamento, Estatuto, Contrato de fideicomiso"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="issueDate">Fecha de Emisión</Label>
-                    <Input
-                      id="issueDate"
-                      type="date"
-                      value={formData.issueDate}
-                      onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="validity">Vigencia</Label>
-                    <Input
-                      id="validity"
-                      value={formData.validity}
-                      onChange={(e) => setFormData({ ...formData, validity: e.target.value })}
-                      placeholder="Vigente, Derogado"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="issueDate">Fecha de Emisión</Label>
+                  <Input
+                    id="issueDate"
+                    type="date"
+                    value={formData.issueDate}
+                    onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="file">Archivo Digital</Label>
                   <Input
-                    id="file"
-                    value={formData.file}
-                    onChange={(e) => setFormData({ ...formData, file: e.target.value })}
-                    placeholder="Nombre del archivo (simulado)"
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={handleDocFileUpload}
+                    className="cursor-pointer"
                   />
+                  {uploadedFile && (
+                    <p className="text-sm text-muted-foreground">Archivo cargado: {getFileInfo(uploadedFile)?.name}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="notes">Notas Internas</Label>
@@ -274,7 +270,7 @@ export default function RegulatoryPage() {
                         <h3 className="font-semibold text-lg">{doc.type}</h3>
                         <p className="text-sm text-muted-foreground">{entity?.name}</p>
                       </div>
-                      <Badge>{doc.validity || "Sin especificar"}</Badge>
+                      {doc.validity && <Badge>{doc.validity}</Badge>}
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground mb-3">
                       <p>Fecha: {doc.issueDate || "No especificada"}</p>
@@ -295,9 +291,9 @@ export default function RegulatoryPage() {
                         </Button>
                       )}
                       {doc.file && (
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" onClick={() => downloadFile(doc.file)}>
                           <File className="w-4 h-4 mr-1" />
-                          Ver Archivo
+                          Descargar Archivo
                         </Button>
                       )}
                     </div>
@@ -344,26 +340,20 @@ export default function RegulatoryPage() {
               <Label>Tipo de Documento</Label>
               <Input value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value })} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Fecha de Emisión</Label>
-                <Input
-                  type="date"
-                  value={formData.issueDate}
-                  onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Vigencia</Label>
-                <Input
-                  value={formData.validity}
-                  onChange={(e) => setFormData({ ...formData, validity: e.target.value })}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label>Fecha de Emisión</Label>
+              <Input
+                type="date"
+                value={formData.issueDate}
+                onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
+              />
             </div>
             <div className="space-y-2">
               <Label>Archivo Digital</Label>
-              <Input value={formData.file} onChange={(e) => setFormData({ ...formData, file: e.target.value })} />
+              <Input type="file" accept=".pdf,.doc,.docx" onChange={handleDocFileUpload} className="cursor-pointer" />
+              {uploadedFile && (
+                <p className="text-sm text-muted-foreground">Archivo cargado: {getFileInfo(uploadedFile)?.name}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Notas Internas</Label>

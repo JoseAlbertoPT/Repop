@@ -87,7 +87,7 @@ export const mockEntities: Entity[] = [
   },
   {
     id: "5",
-    folio: "SAyF-PF-REPOPA-FIDTUR-FI-2025-01",
+    folio: "SAyF-PF-REPOPA-FIDTUR-FI-2025-05",
     type: "Fideicomiso",
     name: "Fideicomiso para el Desarrollo Turístico de Morelos",
     purpose: "Promover y desarrollar la actividad turística en el estado",
@@ -102,7 +102,7 @@ export const mockEntities: Entity[] = [
   },
   {
     id: "6",
-    folio: "SAyF-PF-REPOPA-FIDINFRA-FI-2025-02",
+    folio: "SAyF-PF-REPOPA-FIDINFRA-FI-2025-06",
     type: "Fideicomiso",
     name: "Fideicomiso para la Infraestructura Educativa de Morelos",
     purpose: "Administrar recursos para infraestructura educativa estatal",
@@ -116,7 +116,7 @@ export const mockEntities: Entity[] = [
   },
   {
     id: "7",
-    folio: "SAyF-PF-REPOPA-FIDCONV-FI-2025-03",
+    folio: "SAyF-PF-REPOPA-FIDCONV-FI-2025-07",
     type: "Fideicomiso",
     name: "Fideicomiso del Centro de Convenciones de Cuernavaca",
     purpose: "Administrar y operar el Centro de Convenciones",
@@ -130,7 +130,7 @@ export const mockEntities: Entity[] = [
   },
   {
     id: "8",
-    folio: "SAyF-PF-REPOPA-AEROCVA-EPEM-2025-01",
+    folio: "SAyF-PF-REPOPA-AEROCVA-EPEM-2025-08",
     type: "EPEM",
     name: "Aeropuerto de Cuernavaca",
     purpose: "Operar y administrar el aeropuerto civil del estado de Morelos",

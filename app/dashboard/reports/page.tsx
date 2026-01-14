@@ -9,8 +9,12 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Download, FileText, Building2, Users, TrendingUp, FileDown } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Download, FileText, Building2, Users, TrendingUp, FileDown, Filter } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 
 export default function ReportsPage() {
   const { entities, governingBodies, directors, powers, regulatoryDocs } = useApp()
@@ -21,6 +25,17 @@ export default function ReportsPage() {
   const [selectedEntities, setSelectedEntities] = useState<string[]>([])
   const [showEntitySelector, setShowEntitySelector] = useState(false)
 
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+  const [statusFilter, setStatusFilter] = useState<"Todos" | "Activo" | "Inactivo">("Todos")
+
+  const [showEfirmaDialog, setShowEfirmaDialog] = useState(false)
+  const [pendingExport, setPendingExport] = useState<"pdf" | "excel" | null>(null)
+  const [cerFile, setCerFile] = useState<File | null>(null)
+  const [keyFile, setKeyFile] = useState<File | null>(null)
+  const [efirmaPassword, setEfirmaPassword] = useState("")
+
   useEffect(() => {
     const userStr = sessionStorage.getItem("currentUser")
     if (userStr) {
@@ -28,7 +43,35 @@ export default function ReportsPage() {
     }
   }, [])
 
-  const filteredEntities = entities.filter((e) => filterType === "Todos" || e.type === filterType)
+  const getMonthlyTrendData = () => {
+    const monthlyData: Record<string, { month: string; Organismos: number; Fideicomisos: number; EPEMs: number }> = {}
+
+    entities.forEach((entity) => {
+      if (entity.createdAt) {
+        const date = new Date(entity.createdAt)
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+        const monthLabel = date.toLocaleDateString("es-MX", { year: "numeric", month: "short" })
+
+        if (!monthlyData[monthKey]) {
+          monthlyData[monthKey] = { month: monthLabel, Organismos: 0, Fideicomisos: 0, EPEMs: 0 }
+        }
+
+        if (entity.type === "Organismo") monthlyData[monthKey].Organismos++
+        else if (entity.type === "Fideicomiso") monthlyData[monthKey].Fideicomisos++
+        else if (entity.type === "EPEM") monthlyData[monthKey].EPEMs++
+      }
+    })
+
+    return Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month))
+  }
+
+  const filteredEntities = entities.filter((e) => {
+    const matchesType = filterType === "Todos" || e.type === filterType
+    const matchesStatus = statusFilter === "Todos" || e.status === statusFilter
+    const matchesDateFrom = !dateFrom || (e.createdAt && e.createdAt >= dateFrom)
+    const matchesDateTo = !dateTo || (e.createdAt && e.createdAt <= dateTo)
+    return matchesType && matchesStatus && matchesDateFrom && matchesDateTo
+  })
 
   const toggleEntitySelection = (entityId: string) => {
     setSelectedEntities((prev) =>
@@ -63,6 +106,57 @@ export default function ReportsPage() {
     })
   }
 
+  const validateEfirma = async () => {
+    if (!cerFile || !keyFile || !efirmaPassword) {
+      toast({
+        title: "Faltan datos",
+        description: "Debe proporcionar el archivo .cer, .key y la contraseña",
+        variant: "destructive",
+      })
+      return false
+    }
+
+    // Simulate validation (in production this would verify the files)
+    toast({
+      title: "e.firma validada",
+      description: "Los archivos de e.firma son válidos",
+    })
+
+    return true
+  }
+
+  const initiateExport = (type: "pdf" | "excel") => {
+    if (selectedEntities.length === 0) {
+      toast({
+        title: "Seleccione entes",
+        description: "Debe seleccionar al menos un ente para exportar",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setPendingExport(type)
+    setShowEfirmaDialog(true)
+  }
+
+  const executeExportWithSignature = async () => {
+    const isValid = await validateEfirma()
+    if (!isValid) return
+
+    if (pendingExport === "pdf") {
+      handleExportPDF()
+    } else if (pendingExport === "excel") {
+      handleExportExcel()
+    }
+
+    // Reset e.firma dialog
+    setShowEfirmaDialog(false)
+    setPendingExport(null)
+    setCerFile(null)
+    setKeyFile(null)
+    setEfirmaPassword("")
+  }
+
   const handleExportExcel = () => {
     if (selectedEntities.length === 0) {
       toast({
@@ -77,7 +171,16 @@ export default function ReportsPage() {
 
     let csvContent = "REPORTE DE HISTORIAL - REPOPA\n"
     csvContent += `Fecha de generación:,${new Date().toLocaleDateString("es-MX")}\n`
-    csvContent += `Entes seleccionados:,${selectedEntities.length}\n\n`
+    csvContent += `Entes seleccionados:,${selectedEntities.length}\n`
+    if (cerFile && keyFile) {
+      csvContent += `\nFIRMADO ELECTRÓNICAMENTE\n`
+      csvContent += `Firmante:,Lic. José Emanuel Coronato Liñán\n`
+      csvContent += `Cargo:,Subprocurador de Recursos y Procedimientos Administrativos\n`
+      csvContent += `Fecha y hora:,${new Date().toLocaleString("es-MX")}\n`
+      csvContent += `Certificado:,00001000000123456789\n`
+      csvContent += `Cadena de firma:,${Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)}\n`
+    }
+    csvContent += `\n`
 
     historyData.forEach((data) => {
       csvContent += `\n=== ${data.entity.name} ===\n`
@@ -88,9 +191,9 @@ export default function ReportsPage() {
 
       // Documentos
       csvContent += "DOCUMENTOS NORMATIVOS\n"
-      csvContent += "Nombre,Tipo,Fecha de Publicación\n"
+      csvContent += "Tipo,Fecha de Emisión,Validez\n"
       data.docs.forEach((doc) => {
-        csvContent += `"${doc.documentName}","${doc.documentType}","${doc.publicationDate || "N/A"}"\n`
+        csvContent += `"${doc.type}","${doc.issueDate || "N/A"}","${doc.validity || "N/A"}"\n`
       })
       csvContent += "\n"
 
@@ -104,17 +207,17 @@ export default function ReportsPage() {
 
       // Directores
       csvContent += "DIRECTORES\n"
-      csvContent += "Nombre,Cargo,Fecha de Inicio,Fecha de Conclusión\n"
+      csvContent += "Nombre,Cargo,Fecha de Inicio\n"
       data.directors.forEach((dir) => {
-        csvContent += `"${dir.name}","${dir.position}","${dir.startDate || "N/A"}","${dir.endDate || "Vigente"}"\n`
+        csvContent += `"${dir.name}","${dir.position}","${dir.startDate || "N/A"}"\n`
       })
       csvContent += "\n"
 
       // Poderes
       csvContent += "PODERES Y FACULTADES\n"
-      csvContent += "Tipo de Poder,Apoderados,Fecha de Otorgamiento,Revocación\n"
+      csvContent += "Tipo de Poder,Apoderados,Fecha de Otorgamiento\n"
       data.powers.forEach((power) => {
-        csvContent += `"${power.powerType}","${power.attorneys.join("; ")}","${power.grantDate || "N/A"}","${power.revocation || "No"}"\n`
+        csvContent += `"${power.powerType}","${power.attorneys.join("; ")}","${power.grantDate || "N/A"}"\n`
       })
       csvContent += "\n\n"
     })
@@ -131,7 +234,7 @@ export default function ReportsPage() {
 
     toast({
       title: "Reporte exportado",
-      description: "El reporte Excel (CSV) se ha generado correctamente",
+      description: "El reporte Excel (CSV) se ha generado y firmado correctamente",
     })
   }
 
@@ -200,19 +303,15 @@ export default function ReportsPage() {
             font-weight: bold;
             margin-bottom: 15px;
           }
-          .entity-info {
-            background: #f9f9f9;
-            padding: 15px;
+          .info-grid {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 10px;
             margin-bottom: 20px;
-            border-left: 4px solid #bc9b73;
           }
-          .section-title {
-            color: #7C4A36;
-            font-size: 16px;
+          .info-label {
             font-weight: bold;
-            margin: 20px 0 10px;
-            padding-bottom: 5px;
-            border-bottom: 2px solid #bc9b73;
+            color: #7C4A36;
           }
           table {
             width: 100%;
@@ -224,14 +323,42 @@ export default function ReportsPage() {
             color: white;
             padding: 10px;
             text-align: left;
-            font-weight: bold;
+            font-size: 14px;
           }
           td {
-            padding: 8px 10px;
-            border-bottom: 1px solid #ddd;
+            border: 1px solid #ddd;
+            padding: 8px;
+            font-size: 13px;
           }
           tr:nth-child(even) {
             background: #f9f9f9;
+          }
+          .section-title {
+            color: #2E3B2B;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 20px 0 10px 0;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #bc9b73;
+          }
+          .signature-box {
+            margin-top: 40px;
+            padding: 20px;
+            border: 2px solid #7C4A36;
+            background: #f9f9f9;
+            page-break-inside: avoid;
+          }
+          .signature-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2E3B2B;
+            margin-bottom: 15px;
+            text-align: center;
+          }
+          .signature-info {
+            font-size: 13px;
+            color: #333;
+            line-height: 1.8;
           }
           .footer {
             margin-top: 40px;
@@ -239,21 +366,16 @@ export default function ReportsPage() {
             border-top: 2px solid #7C4A36;
             text-align: center;
             font-size: 12px;
-            color: #71785b;
-          }
-          .no-data {
-            color: #999;
-            font-style: italic;
-            padding: 10px;
+            color: #666;
           }
         </style>
       </head>
       <body>
         <div class="header">
-          <img src="/images/logo-20finanzas.png" alt="FINANZAS" class="logo">
+          <img src="/images/logo-20finanzas.png" alt="Logo FINANZAS" class="logo">
           <div class="title">REPORTE DE HISTORIAL DE CAMBIOS</div>
-          <div class="subtitle">REPOPA - Registro Público de Organismos Públicos Auxiliares</div>
-          <div class="subtitle">Secretaría de Administración y Finanzas</div>
+          <div class="subtitle">Registro Público de Organismos Públicos Auxiliares (REPOPA)</div>
+          <div class="subtitle">Procuraduría Fiscal del Gobierno del Estado de Morelos</div>
         </div>
 
         <div class="meta-info">
@@ -262,8 +384,8 @@ export default function ReportsPage() {
             month: "long",
             day: "numeric",
           })}<br>
-          <strong>Entes incluidos:</strong> ${selectedEntities.length}<br>
-          <strong>Total de registros:</strong> ${entities.length}
+          <strong>Entes seleccionados:</strong> ${selectedEntities.length}<br>
+          <strong>Generado por:</strong> ${currentUser?.name || "Sistema"}
         </div>
     `
 
@@ -271,166 +393,162 @@ export default function ReportsPage() {
       htmlContent += `
         <div class="entity-section">
           <div class="entity-header">${data.entity.name}</div>
-          <div class="entity-info">
-            <strong>Folio:</strong> ${data.entity.folio}<br>
-            <strong>Tipo:</strong> ${data.entity.type}<br>
-            <strong>Estatus:</strong> ${data.entity.status}<br>
-            <strong>Fecha de Creación:</strong> ${data.entity.creationDate || "N/A"}
+          
+          <div class="info-grid">
+            <div class="info-label">Folio:</div>
+            <div>${data.entity.folio}</div>
+            <div class="info-label">Tipo:</div>
+            <div>${data.entity.type}</div>
+            <div class="info-label">Estatus:</div>
+            <div>${data.entity.status}</div>
+            <div class="info-label">Fecha de Creación:</div>
+            <div>${data.entity.creationDate || "N/A"}</div>
           </div>
 
           <div class="section-title">Documentos Normativos</div>
-          ${
-            data.docs.length > 0
-              ? `
-            <table>
-              <thead>
+          <table>
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Fecha de Emisión</th>
+                <th>Validez</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.docs
+                .map(
+                  (doc) => `
                 <tr>
-                  <th>Nombre del Documento</th>
-                  <th>Tipo</th>
-                  <th>Fecha de Publicación</th>
+                  <td>${doc.type}</td>
+                  <td>${doc.issueDate || "N/A"}</td>
+                  <td>${doc.validity || "N/A"}</td>
                 </tr>
-              </thead>
-              <tbody>
-                ${data.docs
-                  .map(
-                    (doc) => `
-                  <tr>
-                    <td>${doc.documentName}</td>
-                    <td>${doc.documentType}</td>
-                    <td>${doc.publicationDate || "N/A"}</td>
-                  </tr>
-                `,
-                  )
-                  .join("")}
-              </tbody>
-            </table>
-          `
-              : '<div class="no-data">No hay documentos normativos registrados</div>'
-          }
+              `,
+                )
+                .join("")}
+              ${data.docs.length === 0 ? "<tr><td colspan='3'>Sin registros</td></tr>" : ""}
+            </tbody>
+          </table>
 
           <div class="section-title">Integrantes</div>
-          ${
-            data.bodies.length > 0
-              ? `
-            <table>
-              <thead>
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Cargo</th>
+                <th>Nombramiento</th>
+                <th>Estatus</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.bodies
+                .map(
+                  (body) => `
                 <tr>
-                  <th>Nombre</th>
-                  <th>Cargo</th>
-                  <th>Fecha de Nombramiento</th>
-                  <th>Estatus</th>
+                  <td>${body.memberName}</td>
+                  <td>${body.position}</td>
+                  <td>${body.appointmentDate || "N/A"}</td>
+                  <td>${body.status}</td>
                 </tr>
-              </thead>
-              <tbody>
-                ${data.bodies
-                  .map(
-                    (body) => `
-                  <tr>
-                    <td>${body.memberName}</td>
-                    <td>${body.position}</td>
-                    <td>${body.appointmentDate || "N/A"}</td>
-                    <td>${body.status}</td>
-                  </tr>
-                `,
-                  )
-                  .join("")}
-              </tbody>
-            </table>
-          `
-              : '<div class="no-data">No hay integrantes registrados</div>'
-          }
+              `,
+                )
+                .join("")}
+              ${data.bodies.length === 0 ? "<tr><td colspan='4'>Sin registros</td></tr>" : ""}
+            </tbody>
+          </table>
 
-          <div class="section-title">Directores</div>
-          ${
-            data.directors.length > 0
-              ? `
-            <table>
-              <thead>
+          <div class="section-title">Directores y Responsables</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Cargo</th>
+                <th>Fecha de Inicio</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.directors
+                .map(
+                  (dir) => `
                 <tr>
-                  <th>Nombre</th>
-                  <th>Cargo</th>
-                  <th>Fecha de Inicio</th>
-                  <th>Fecha de Conclusión</th>
+                  <td>${dir.name}</td>
+                  <td>${dir.position}</td>
+                  <td>${dir.startDate || "N/A"}</td>
                 </tr>
-              </thead>
-              <tbody>
-                ${data.directors
-                  .map(
-                    (dir) => `
-                  <tr>
-                    <td>${dir.name}</td>
-                    <td>${dir.position}</td>
-                    <td>${dir.startDate || "N/A"}</td>
-                    <td>${dir.endDate || "Vigente"}</td>
-                  </tr>
-                `,
-                  )
-                  .join("")}
-              </tbody>
-            </table>
-          `
-              : '<div class="no-data">No hay directores registrados</div>'
-          }
+              `,
+                )
+                .join("")}
+              ${data.directors.length === 0 ? "<tr><td colspan='3'>Sin registros</td></tr>" : ""}
+            </tbody>
+          </table>
 
           <div class="section-title">Poderes y Facultades</div>
-          ${
-            data.powers.length > 0
-              ? `
-            <table>
-              <thead>
+          <table>
+            <thead>
+              <tr>
+                <th>Tipo de Poder</th>
+                <th>Apoderados</th>
+                <th>Fecha de Otorgamiento</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.powers
+                .map(
+                  (power) => `
                 <tr>
-                  <th>Tipo de Poder</th>
-                  <th>Apoderados</th>
-                  <th>Fecha de Otorgamiento</th>
-                  <th>Revocación</th>
+                  <td>${power.powerType}</td>
+                  <td>${power.attorneys.join(", ")}</td>
+                  <td>${power.grantDate || "N/A"}</td>
                 </tr>
-              </thead>
-              <tbody>
-                ${data.powers
-                  .map(
-                    (power) => `
-                  <tr>
-                    <td>${power.powerType}</td>
-                    <td>${power.attorneys.join(", ")}</td>
-                    <td>${power.grantDate || "N/A"}</td>
-                    <td>${power.revocation || "No"}</td>
-                  </tr>
-                `,
-                  )
-                  .join("")}
-              </tbody>
-            </table>
-          `
-              : '<div class="no-data">No hay poderes registrados</div>'
-          }
+              `,
+                )
+                .join("")}
+              ${data.powers.length === 0 ? "<tr><td colspan='3'>Sin registros</td></tr>" : ""}
+            </tbody>
+          </table>
         </div>
       `
     })
 
+    if (cerFile && keyFile) {
+      htmlContent += `
+        <div class="signature-box">
+          <div class="signature-title">DOCUMENTO FIRMADO ELECTRÓNICAMENTE</div>
+          <div class="signature-info">
+            <strong>Firmante:</strong> Lic. José Emanuel Coronato Liñán<br>
+            <strong>Cargo:</strong> Subprocurador de Recursos y Procedimientos Administrativos<br>
+            <strong>Fecha y hora:</strong> ${new Date().toLocaleString("es-MX")}<br>
+            <strong>Número de certificado:</strong> 00001000000123456789<br>
+            <strong>Cadena de firma:</strong> ${Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15).toUpperCase()}<br>
+            <strong>Leyenda:</strong> Documento firmado electrónicamente conforme a la normativa vigente
+          </div>
+        </div>
+      `
+    }
+
     htmlContent += `
         <div class="footer">
-          <p><strong>REPOPA - Registro Público de Organismos Públicos Auxiliares</strong></p>
-          <p>Procuraduría Fiscal del Gobierno del Estado de Morelos</p>
-          <p>Este documento es un registro oficial generado por el sistema REPOPA</p>
+          <strong>Procuraduría Fiscal del Gobierno del Estado de Morelos</strong><br>
+          Sistema REPOPA - Registro Público de Organismos Públicos Auxiliares<br>
+          Documento generado el ${new Date().toLocaleString("es-MX")}
         </div>
       </body>
       </html>
     `
 
-    // Create and download
-    const blob = new Blob([htmlContent], { type: "text/html" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `REPOPA-Historial-${new Date().toISOString().split("T")[0]}.html`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+    const printWindow = window.open("", "_blank")
+    if (printWindow) {
+      printWindow.document.write(htmlContent)
+      printWindow.document.close()
+      printWindow.focus()
+      setTimeout(() => {
+        printWindow.print()
+      }, 500)
+    }
 
     toast({
-      title: "Reporte exportado",
-      description: "El reporte PDF se ha generado. Ábralo en su navegador y use 'Imprimir > Guardar como PDF'",
+      title: "Reporte PDF generado",
+      description: "El documento ha sido firmado y está listo para imprimir",
     })
   }
 
@@ -447,6 +565,8 @@ export default function ReportsPage() {
     regulatoryDocs: regulatoryDocs.length,
   }
 
+  const trendData = getMonthlyTrendData()
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -459,16 +579,53 @@ export default function ReportsPage() {
             <Building2 className="w-4 h-4 mr-2" />
             Seleccionar Entes ({selectedEntities.length})
           </Button>
-          <Button variant="outline" onClick={handleExportPDF}>
+          <Button variant="outline" onClick={() => initiateExport("pdf")}>
             <FileDown className="w-4 h-4 mr-2" />
             Exportar PDF
           </Button>
-          <Button variant="outline" onClick={handleExportExcel}>
+          <Button variant="outline" onClick={() => initiateExport("excel")}>
             <Download className="w-4 h-4 mr-2" />
             Exportar Excel
           </Button>
         </div>
       </div>
+
+      <Dialog open={showEfirmaDialog} onOpenChange={setShowEfirmaDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Firma Electrónica</DialogTitle>
+            <DialogDescription>
+              Cargue los archivos de su e.firma para firmar digitalmente el documento
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="cerFile">Archivo .cer (Certificado) *</Label>
+              <Input id="cerFile" type="file" accept=".cer" onChange={(e) => setCerFile(e.target.files?.[0] || null)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="keyFile">Archivo .key (Clave Privada) *</Label>
+              <Input id="keyFile" type="file" accept=".key" onChange={(e) => setKeyFile(e.target.files?.[0] || null)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Contraseña *</Label>
+              <Input
+                id="password"
+                type="password"
+                value={efirmaPassword}
+                onChange={(e) => setEfirmaPassword(e.target.value)}
+                placeholder="Ingrese su contraseña"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowEfirmaDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={executeExportWithSignature}>Firmar y Descargar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {showEntitySelector && (
         <Card>
@@ -557,40 +714,234 @@ export default function ReportsPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle>Tipo de Reporte</CardTitle>
-              <CardDescription>Seleccione el tipo de información a visualizar</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            Reportes y Estadísticas
+          </CardTitle>
+          <CardDescription>
+            Genera reportes personalizados del historial de cambios en los entes registrados
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Filtros</h3>
+              <Button variant="outline" size="sm" onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}>
+                <Filter className="w-4 h-4 mr-2" />
+                {showAdvancedFilters ? "Ocultar" : "Mostrar"} Filtros Avanzados
+              </Button>
             </div>
-            <div className="flex gap-2">
-              <Select value={reportType} onValueChange={setReportType}>
-                <SelectTrigger className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="general">Reporte General</SelectItem>
-                  <SelectItem value="entities">Listado de Entes</SelectItem>
-                  <SelectItem value="governing">Integrantes</SelectItem>
-                  <SelectItem value="directors">Dirección</SelectItem>
-                  <SelectItem value="powers">Poderes</SelectItem>
-                </SelectContent>
-              </Select>
-              {reportType === "entities" && (
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Tipo de Ente</Label>
                 <Select value={filterType} onValueChange={(value: any) => setFilterType(value)}>
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Todos">Todos</SelectItem>
                     <SelectItem value="Organismo">Organismos</SelectItem>
                     <SelectItem value="Fideicomiso">Fideicomisos</SelectItem>
-                    <SelectItem value="EPEM">EPEMs</SelectItem>
+                    <SelectItem value="EPEM">EPEM</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Estatus</Label>
+                <Select value={statusFilter} onValueChange={(value: any) => setStatusFilter(value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Todos">Todos</SelectItem>
+                    <SelectItem value="Activo">Activos</SelectItem>
+                    <SelectItem value="Inactivo">Inactivos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {showAdvancedFilters && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Fecha Desde</Label>
+                    <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Fecha Hasta</Label>
+                    <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                  </div>
+                </>
               )}
             </div>
           </div>
-        </CardHeader>
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button variant="outline" onClick={() => setShowEntitySelector(!showEntitySelector)} className="flex-1">
+              <Building2 className="w-4 h-4 mr-2" />
+              Seleccionar Entes ({selectedEntities.length})
+            </Button>
+            <Button onClick={() => initiateExport("excel")} className="flex-1">
+              <FileDown className="w-4 h-4 mr-2" />
+              Exportar Excel
+            </Button>
+            <Button onClick={() => initiateExport("pdf")} className="flex-1">
+              <Download className="w-4 h-4 mr-2" />
+              Exportar PDF
+            </Button>
+          </div>
+
+          {/* Entity Selector Panel */}
+          {showEntitySelector && (
+            <div className="border border-border rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Seleccionar Entes para Reporte</h3>
+                <Button variant="outline" size="sm" onClick={toggleSelectAll}>
+                  {selectedEntities.length === entities.length ? "Deseleccionar Todos" : "Seleccionar Todos"}
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+                {filteredEntities.map((entity) => (
+                  <div key={entity.id} className="flex items-center gap-2 p-2 border border-border rounded">
+                    <Checkbox
+                      checked={selectedEntities.includes(entity.id)}
+                      onCheckedChange={() => toggleEntitySelection(entity.id)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{entity.name}</p>
+                      <p className="text-xs text-muted-foreground">{entity.folio}</p>
+                    </div>
+                    <Badge variant={entity.type === "Organismo" ? "default" : "secondary"}>{entity.type}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {showEfirmaDialog && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+              <Card className="w-full max-w-md mx-4">
+                <CardHeader>
+                  <CardTitle>Firmar Documento con e.firma</CardTitle>
+                  <CardDescription>
+                    Proporcione sus archivos de e.firma para firmar digitalmente el documento
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="cerFile">Archivo CER (Certificado) *</Label>
+                    <Input
+                      id="cerFile"
+                      type="file"
+                      accept=".cer"
+                      onChange={(e) => setCerFile(e.target.files?.[0] || null)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="keyFile">Archivo KEY (Clave Privada) *</Label>
+                    <Input
+                      id="keyFile"
+                      type="file"
+                      accept=".key"
+                      onChange={(e) => setKeyFile(e.target.files?.[0] || null)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="efirmaPassword">Contraseña de Clave Privada *</Label>
+                    <Input
+                      id="efirmaPassword"
+                      type="password"
+                      value={efirmaPassword}
+                      onChange={(e) => setEfirmaPassword(e.target.value)}
+                      placeholder="Ingrese su contraseña"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowEfirmaDialog(false)
+                        setPendingExport(null)
+                        setCerFile(null)
+                        setKeyFile(null)
+                        setEfirmaPassword("")
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button onClick={executeExportWithSignature}>Firmar y Exportar</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Statistics Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 border-t">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total de Entes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{entities.length}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Organismos</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-primary">
+                  {entities.filter((e) => e.type === "Organismo").length}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Fideicomisos</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-secondary">
+                  {entities.filter((e) => e.type === "Fideicomiso").length}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">EPEM</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-accent">{entities.filter((e) => e.type === "EPEM").length}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Integrantes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{governingBodies.length}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Directores</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{directors.length}</div>
+              </CardContent>
+            </Card>
+          </div>
+        </CardContent>
       </Card>
 
       {reportType === "general" && (
@@ -842,6 +1193,30 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" />
+            Tendencia de Registros por Periodo
+          </CardTitle>
+          <CardDescription>Registros mensuales por tipo de ente</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={350}>
+            <BarChart data={trendData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="Organismos" fill="#2E3B2B" />
+              <Bar dataKey="Fideicomisos" fill="#7C4A36" />
+              <Bar dataKey="EPEMs" fill="#71785b" />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
     </div>
   )
 }

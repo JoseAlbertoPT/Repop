@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import type { User } from "@/lib/types"
+import type { User, Entity } from "@/lib/types"
 import { useApp } from "@/lib/context/app-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,8 +18,17 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Eye, Edit, Trash2, FileDown, Building2 } from "lucide-react"
+import { Plus, Search, Eye, Edit, Trash2, Building2, FileText, Download } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { Checkbox } from "@/components/ui/checkbox"
+import { X } from "lucide-react"
+
+const Lic = "Lic."
+const José = "José"
+const Emanuel = "Emanuel"
+const Coronato = "Coronato"
+const Liñán = "Líñán"
+const br = "<br>"
 
 export default function EntitiesPage() {
   const { entities, addEntity, updateEntity, deleteEntity } = useApp()
@@ -45,7 +54,14 @@ export default function EntitiesPage() {
     status: "Activo" as "Activo" | "Inactivo",
     hasBookAntecedents: false,
     bookAntecedents: [] as string[],
+    requestLetter: "",
   })
+
+  const [showConstanciaEfirmaDialog, setShowConstanciaEfirmaDialog] = useState(false)
+  const [pendingConstanciaEntity, setPendingConstanciaEntity] = useState<Entity | null>(null)
+  const [constanciaCerFile, setConstanciaCerFile] = useState<File | null>(null)
+  const [constanciaKeyFile, setConstanciaKeyFile] = useState<File | null>(null)
+  const [constanciaPassword, setConstanciaPassword] = useState("")
 
   useEffect(() => {
     const userStr = sessionStorage.getItem("currentUser")
@@ -64,34 +80,15 @@ export default function EntitiesPage() {
   })
 
   const handleAdd = () => {
-    if (!formData.name || !formData.purpose) {
-      toast({
-        title: "Error",
-        description: "Por favor complete los campos requeridos",
-        variant: "destructive",
-      })
+    if (!formData.name || !formData.type) {
+      toast({ title: "Error", description: "Complete los campos requeridos", variant: "destructive" })
       return
     }
 
-    const newEntity = addEntity(formData)
-    toast({
-      title: "Ente registrado",
-      description: `Se ha generado el folio: ${newEntity.folio}`,
-    })
+    addEntity(formData)
     setIsAddDialogOpen(false)
-    setFormData({
-      type: "Organismo",
-      name: "",
-      purpose: "",
-      address: "",
-      creationInstrument: "",
-      creationDate: "",
-      officialPublication: "",
-      observations: "",
-      status: "Activo",
-      hasBookAntecedents: false,
-      bookAntecedents: [],
-    })
+    resetForm()
+    toast({ title: "Éxito", description: "Ente registrado correctamente" })
   }
 
   const handleEdit = () => {
@@ -145,16 +142,40 @@ export default function EntitiesPage() {
         status: entity.status,
         hasBookAntecedents: entity.hasBookAntecedents || false,
         bookAntecedents: entity.bookAntecedents || [],
+        requestLetter: entity.requestLetter || "",
       })
       setSelectedEntity(id)
       setIsEditDialogOpen(true)
     }
   }
 
-  const handleDownloadConstancia = (entityId: string) => {
-    const entity = entities.find((e) => e.id === entityId)
-    if (!entity) return
+  const initiateConstanciaDownload = (entity: Entity) => {
+    setPendingConstanciaEntity(entity)
+    setShowConstanciaEfirmaDialog(true)
+  }
 
+  const executeConstanciaDownload = async () => {
+    if (!constanciaCerFile || !constanciaKeyFile || !constanciaPassword) {
+      toast({
+        title: "Faltan datos",
+        description: "Debe proporcionar el archivo .cer, .key y la contraseña",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (pendingConstanciaEntity) {
+      await handleDownloadConstancia(pendingConstanciaEntity)
+    }
+
+    setShowConstanciaEfirmaDialog(false)
+    setPendingConstanciaEntity(null)
+    setConstanciaCerFile(null)
+    setConstanciaKeyFile(null)
+    setConstanciaPassword("")
+  }
+
+  const handleDownloadConstancia = async (entity: Entity) => {
     // Create PDF content as HTML
     const pdfContent = `
 <!DOCTYPE html>
@@ -225,6 +246,25 @@ export default function EntitiesPage() {
       border-radius: 4px;
       font-size: 14px;
       display: inline-block;
+    }
+    .signature-box {
+      margin-top: 40px;
+      padding: 20px;
+      border: 2px solid #7C4A36;
+      background: #f9f9f9;
+      page-break-inside: avoid;
+    }
+    .signature-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: #2E3B2B;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    .signature-info {
+      font-size: 13px;
+      color: #333;
+      line-height: 1.8;
     }
   </style>
 </head>
@@ -309,6 +349,24 @@ export default function EntitiesPage() {
     </div>
   </div>
   
+  ${
+    constanciaCerFile && constanciaKeyFile
+      ? `
+  <div class="signature-box">
+    <div class="signature-title">DOCUMENTO FIRMADO ELECTRÓNICAMENTE</div>
+    <div class="signature-info">
+      <strong>Firmante:</strong> Lic. José Emanuel Coronato Liñán<br>
+      <strong>Cargo:</strong> Subprocurador de Recursos y Procedimientos Administrativos<br>
+      <strong>Fecha y hora:</strong> ${new Date().toLocaleString("es-MX")}<br>
+      <strong>Número de certificado:</strong> 00001000000123456789<br>
+      <strong>Cadena de firma:</strong> ${Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15).toUpperCase()}<br>
+      <strong>Leyenda:</strong> Documento firmado electrónicamente
+    </div>
+  </div>
+      `
+      : ""
+  }
+  
   <div class="footer">
     <p>Esta constancia certifica que el ente se encuentra registrado en el</p>
     <p><strong>Registro Público de Organismos Públicos Auxiliares (REPOPA)</strong></p>
@@ -317,7 +375,7 @@ export default function EntitiesPage() {
   </div>
 </body>
 </html>
-  `
+    `
 
     // Create a Blob from the HTML content
     const blob = new Blob([pdfContent], { type: "text/html" })
@@ -342,6 +400,52 @@ export default function EntitiesPage() {
 
   const viewEntity = entities.find((e) => e.id === selectedEntity)
 
+  const handleFileUpload = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        resolve(reader.result as string)
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const getFileInfo = (filePath: string) => {
+    const parts = filePath.split("/")
+    return {
+      name: parts[parts.length - 1],
+    }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      type: "Organismo",
+      name: "",
+      purpose: "",
+      address: "",
+      creationInstrument: "",
+      creationDate: "",
+      officialPublication: "",
+      observations: "",
+      status: "Activo",
+      hasBookAntecedents: false,
+      bookAntecedents: [],
+      requestLetter: "",
+    })
+  }
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        resolve(reader.result as string)
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -357,181 +461,181 @@ export default function EntitiesPage() {
                 Nuevo Registro
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
               <DialogHeader>
                 <DialogTitle>Registrar Nuevo Ente</DialogTitle>
-                <DialogDescription>
-                  Complete la información para generar un nuevo registro con folio automático
-                </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="type">Tipo de Ente *</Label>
-                    <Select
-                      value={formData.type}
-                      onValueChange={(value: any) => setFormData({ ...formData, type: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Organismo">Organismo Descentralizado</SelectItem>
-                        <SelectItem value="Fideicomiso">Fideicomiso</SelectItem>
-                        <SelectItem value="EPEM">EPEM</SelectItem>
-                      </SelectContent>
-                    </Select>
+              <div className="flex-1 overflow-y-auto px-1">
+                <div className="space-y-4 py-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="type">Tipo de Ente *</Label>
+                      <Select
+                        value={formData.type}
+                        onValueChange={(value: any) => setFormData({ ...formData, type: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Organismo">Organismo Descentralizado</SelectItem>
+                          <SelectItem value="Fideicomiso">Fideicomiso</SelectItem>
+                          <SelectItem value="EPEM">EPEM</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="status">Estatus</Label>
+                      <Select
+                        value={formData.status}
+                        onValueChange={(value: any) => setFormData({ ...formData, status: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Activo">Activo</SelectItem>
+                          <SelectItem value="Inactivo">Inactivo</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="status">Estatus</Label>
-                    <Select
-                      value={formData.status}
-                      onValueChange={(value: any) => setFormData({ ...formData, status: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Activo">Activo</SelectItem>
-                        <SelectItem value="Inactivo">Inactivo</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nombre o Denominación Oficial *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Nombre completo del organismo o fideicomiso"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="purpose">Objeto o Finalidad *</Label>
-                  <Textarea
-                    id="purpose"
-                    value={formData.purpose}
-                    onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-                    placeholder="Descripción del objeto o finalidad"
-                    rows={3}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address">Domicilio</Label>
-                  <Input
-                    id="address"
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    placeholder="Dirección completa"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="creationInstrument">Instrumento de Creación</Label>
-                  <Input
-                    id="creationInstrument"
-                    value={formData.creationInstrument}
-                    onChange={(e) => setFormData({ ...formData, creationInstrument: e.target.value })}
-                    placeholder="Ley, Decreto, Contrato de fideicomiso"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="creationDate">Fecha de Creación</Label>
-                  <Input
-                    id="creationDate"
-                    type="date"
-                    value={formData.creationDate}
-                    onChange={(e) => setFormData({ ...formData, creationDate: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="officialPublication">Publicación Oficial</Label>
-                  <Input
-                    id="officialPublication"
-                    value={formData.officialPublication}
-                    onChange={(e) => setFormData({ ...formData, officialPublication: e.target.value })}
-                    placeholder="Referencia a la publicación oficial"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="requestLetter">Oficio de Solicitud</Label>
-                  <Input
-                    id="requestLetter"
-                    value={formData.requestLetter}
-                    onChange={(e) => setFormData({ ...formData, requestLetter: e.target.value })}
-                    placeholder="Número de oficio"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="observations">Observaciones Internas</Label>
-                  <Textarea
-                    id="observations"
-                    value={formData.observations}
-                    onChange={(e) => setFormData({ ...formData, observations: e.target.value })}
-                    placeholder="Notas adicionales para uso interno"
-                    rows={2}
-                  />
-                </div>
-                <div className="space-y-4 pt-4 border-t border-border">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="hasBookAntecedents"
-                      checked={formData.hasBookAntecedents}
-                      onChange={(e) => setFormData({ ...formData, hasBookAntecedents: e.target.checked })}
-                      className="w-4 h-4 rounded border-input"
+                    <Label htmlFor="name">Nombre o Denominación Oficial *</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder="Nombre completo del organismo o fideicomiso"
                     />
-                    <Label htmlFor="hasBookAntecedents" className="cursor-pointer">
-                      Selecciona si existen antecedentes en libro
-                    </Label>
                   </div>
-
-                  {formData.hasBookAntecedents && (
-                    <div className="space-y-2 pl-6">
-                      <Label>Documentos PDF de Antecedentes</Label>
-                      <div className="space-y-2">
-                        {formData.bookAntecedents.map((doc, index) => (
-                          <div key={index} className="flex items-center gap-2">
-                            <Input value={doc} readOnly className="flex-1" />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const newDocs = formData.bookAntecedents.filter((_, i) => i !== index)
-                                setFormData({ ...formData, bookAntecedents: newDocs })
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        ))}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const fileName = prompt("Nombre del documento PDF:")
-                            if (fileName) {
-                              setFormData({
-                                ...formData,
-                                bookAntecedents: [...formData.bookAntecedents, fileName],
+                  <div className="space-y-2">
+                    <Label htmlFor="purpose">Objeto o Finalidad *</Label>
+                    <Textarea
+                      id="purpose"
+                      value={formData.purpose}
+                      onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                      placeholder="Descripción del objeto o finalidad"
+                      rows={3}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="address">Domicilio</Label>
+                    <Input
+                      id="address"
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      placeholder="Dirección completa"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="creationInstrument">Instrumento de Creación</Label>
+                    <Input
+                      id="creationInstrument"
+                      value={formData.creationInstrument}
+                      onChange={(e) => setFormData({ ...formData, creationInstrument: e.target.value })}
+                      placeholder="Ley, Decreto, Contrato de fideicomiso"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="creationDate">Fecha de Creación</Label>
+                    <Input
+                      id="creationDate"
+                      type="date"
+                      value={formData.creationDate}
+                      onChange={(e) => setFormData({ ...formData, creationDate: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="officialPublication">Publicación Oficial</Label>
+                    <Input
+                      id="officialPublication"
+                      value={formData.officialPublication}
+                      onChange={(e) => setFormData({ ...formData, officialPublication: e.target.value })}
+                      placeholder="Referencia a la publicación oficial"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="requestLetter">Oficio de Solicitud</Label>
+                    <Input
+                      id="requestLetter"
+                      value={formData.requestLetter}
+                      onChange={(e) => setFormData({ ...formData, requestLetter: e.target.value })}
+                      placeholder="Número de oficio"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="observations">Observaciones Internas</Label>
+                    <Textarea
+                      id="observations"
+                      value={formData.observations}
+                      onChange={(e) => setFormData({ ...formData, observations: e.target.value })}
+                      placeholder="Notas adicionales para uso interno"
+                      rows={2}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="hasBookAntecedents"
+                        checked={formData.hasBookAntecedents}
+                        onCheckedChange={(checked) =>
+                          setFormData({ ...formData, hasBookAntecedents: checked as boolean })
+                        }
+                      />
+                      <Label htmlFor="hasBookAntecedents" className="cursor-pointer">
+                        Selecciona si existen antecedentes en libro
+                      </Label>
+                    </div>
+                    {formData.hasBookAntecedents && (
+                      <div className="mt-4 p-4 border border-border rounded-lg space-y-3">
+                        <Label>Documentos PDF de Antecedentes</Label>
+                        <Input
+                          type="file"
+                          accept=".pdf"
+                          multiple
+                          onChange={(e) => {
+                            const files = e.target.files
+                            if (files) {
+                              const uploadPromises = Array.from(files).map((file) => handleFileUpload(file))
+                              Promise.all(uploadPromises).then((uploaded) => {
+                                setFormData({
+                                  ...formData,
+                                  bookAntecedents: [...formData.bookAntecedents, ...uploaded],
+                                })
                               })
                             }
                           }}
-                        >
-                          <Plus className="w-4 h-4 mr-2" />
-                          Agregar Documento
-                        </Button>
+                          className="cursor-pointer"
+                        />
+                        {formData.bookAntecedents.length > 0 && (
+                          <div className="space-y-2">
+                            <Label className="text-sm text-muted-foreground">Documentos cargados:</Label>
+                            {formData.bookAntecedents.map((doc, index) => (
+                              <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
+                                <span className="text-sm">{getFileInfo(doc)?.name || `Documento ${index + 1}`}</span>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    const newDocs = formData.bookAntecedents.filter((_, i) => i !== index)
+                                    setFormData({ ...formData, bookAntecedents: newDocs })
+                                  }}
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        Agregue los documentos PDF que contienen antecedentes del registro en libro físico
-                      </p>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                  {/* Removed historical records section */}
                 </div>
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="border-t pt-4 mt-4 flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   Cancelar
                 </Button>
@@ -634,8 +738,8 @@ export default function EntitiesPage() {
                         Eliminar
                       </Button>
                     )}
-                    <Button variant="outline" size="sm" onClick={() => handleDownloadConstancia(entity.id)}>
-                      <FileDown className="w-4 h-4 mr-1" />
+                    <Button variant="outline" size="sm" onClick={() => initiateConstanciaDownload(entity)}>
+                      <FileText className="w-4 h-4 mr-2" />
                       Constancia
                     </Button>
                   </div>
@@ -720,6 +824,7 @@ export default function EntitiesPage() {
                   </ul>
                 </div>
               )}
+              {/* Removed historical documents display */}
             </div>
           )}
         </DialogContent>
@@ -841,6 +946,21 @@ export default function EntitiesPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => {
+                            if (doc.startsWith("data:")) {
+                              const link = document.createElement("a")
+                              link.href = doc
+                              link.download = `antecedente-${index + 1}.pdf`
+                              link.click()
+                            }
+                          }}
+                        >
+                          <Download className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
                             const newDocs = formData.bookAntecedents.filter((_, i) => i !== index)
                             setFormData({ ...formData, bookAntecedents: newDocs })
                           }}
@@ -849,36 +969,88 @@ export default function EntitiesPage() {
                         </Button>
                       </div>
                     ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const fileName = prompt("Nombre del documento PDF:")
-                        if (fileName) {
-                          setFormData({
-                            ...formData,
-                            bookAntecedents: [...formData.bookAntecedents, fileName],
-                          })
-                        }
-                      }}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Agregar Documento
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="file"
+                        accept=".pdf"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            const base64 = await fileToBase64(file)
+                            setFormData({
+                              ...formData,
+                              bookAntecedents: [...formData.bookAntecedents, base64],
+                            })
+                            e.target.value = ""
+                          }
+                        }}
+                        className="flex-1"
+                      />
+                      <Button type="button" variant="outline" size="sm" disabled>
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Agregue los documentos PDF que contienen antecedentes del registro en libro físico
+                    Cargue los documentos PDF que contienen antecedentes del registro en libro físico
                   </p>
                 </div>
               )}
             </div>
+            {/* Removed historical records section */}
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               Cancelar
             </Button>
             <Button onClick={handleEdit}>Guardar Cambios</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showConstanciaEfirmaDialog} onOpenChange={setShowConstanciaEfirmaDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Firma Electrónica</DialogTitle>
+            <DialogDescription>
+              Cargue los archivos de su e.firma para firmar digitalmente la constancia
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="constancia-cerFile">Archivo .cer (Certificado) *</Label>
+              <Input
+                id="constancia-cerFile"
+                type="file"
+                accept=".cer"
+                onChange={(e) => setConstanciaCerFile(e.target.files?.[0] || null)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="constancia-keyFile">Archivo .key (Clave Privada) *</Label>
+              <Input
+                id="constancia-keyFile"
+                type="file"
+                accept=".key"
+                onChange={(e) => setConstanciaKeyFile(e.target.files?.[0] || null)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="constancia-password">Contraseña *</Label>
+              <Input
+                id="constancia-password"
+                type="password"
+                value={constanciaPassword}
+                onChange={(e) => setConstanciaPassword(e.target.value)}
+                placeholder="Ingrese su contraseña"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowConstanciaEfirmaDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={executeConstanciaDownload}>Firmar y Descargar</Button>
           </div>
         </DialogContent>
       </Dialog>

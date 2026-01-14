@@ -36,6 +36,8 @@ interface AppContextType {
   addUser: (user: Omit<User, "id">) => void
   updateUser: (id: string, user: Partial<User>) => void
   deleteUser: (id: string) => void
+
+  globalFolioCounter: number
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
@@ -47,14 +49,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [directors, setDirectors] = useState<Director[]>(mockDirectors)
   const [powers, setPowers] = useState<Power[]>(mockPowers)
   const [users, setUsers] = useState<User[]>(mockUsers)
+  const [globalFolioCounter, setGlobalFolioCounter] = useState<number>(8)
 
-  const generateFolio = (type: "Organismo" | "Fideicomiso" | "EPEM", name: string) => {
+  const generateFolio = (type: "Organismo" | "Fideicomiso" | "EPEM", name: string, consecutiveNumber: number) => {
     const year = new Date().getFullYear()
     let typeCode = "OPD"
     if (type === "Fideicomiso") typeCode = "FI"
     if (type === "EPEM") typeCode = "EPEM"
 
-    // Extract abbreviation from name (use first letters of each word)
     const nameAbbr =
       name
         .split(" ")
@@ -64,16 +66,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .join("")
         .toUpperCase() || "ENT"
 
-    const existing = entities.filter((e) => e.folio.includes(`SAyF-PF-REPOPA-${nameAbbr}-${typeCode}-${year}`))
-    const nextNumber = (existing.length + 1).toString().padStart(2, "0")
-    return `SAyF-PF-REPOPA-${nameAbbr}-${typeCode}-${year}-${nextNumber}`
+    const folioNumber = consecutiveNumber.toString().padStart(2, "0")
+    return `SAyF-PF-REPOPA-${nameAbbr}-${typeCode}-${year}-${folioNumber}`
   }
 
   const addEntity = (entity: Omit<Entity, "id" | "folio" | "createdAt">) => {
+    const nextConsecutive = globalFolioCounter + 1
+    setGlobalFolioCounter(nextConsecutive)
+
     const newEntity: Entity = {
       ...entity,
       id: Date.now().toString(),
-      folio: generateFolio(entity.type, entity.name),
+      folio: generateFolio(entity.type, entity.name, nextConsecutive),
       createdAt: new Date().toISOString().split("T")[0],
     }
     setEntities([...entities, newEntity])
@@ -185,6 +189,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addUser,
         updateUser,
         deleteUser,
+        globalFolioCounter,
       }}
     >
       {children}
