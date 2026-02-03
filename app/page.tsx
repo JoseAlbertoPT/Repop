@@ -1,14 +1,11 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import React, { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { mockUsers } from "@/lib/data"
 import { Shield, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
@@ -17,18 +14,39 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setLoading(true)
 
-    const user = mockUsers.find((u) => u.email === email && u.password === password)
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include", 
+        body: JSON.stringify({ email, password }),
+      })
 
-    if (user) {
-      sessionStorage.setItem("currentUser", JSON.stringify(user))
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error || "Error al iniciar sesión")
+        setLoading(false)
+        return
+      }
+
+      sessionStorage.setItem("currentUser", JSON.stringify(data))
+      sessionStorage.setItem("jwtToken", data.token)
+
       router.push("/dashboard")
-    } else {
-      setError("Correo electrónico o contraseña incorrectos")
+
+    } catch (err) {
+      console.error(err)
+      setError("No se pudo conectar con el servidor")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -44,9 +62,12 @@ export default function LoginPage() {
             <CardDescription className="text-base mt-2">
               Registro Público de Organismos Públicos Auxiliares
             </CardDescription>
-            <p className="text-xs text-muted-foreground mt-2">Procuraduría Fiscal - Gobierno del Estado de Morelos</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Procuraduría Fiscal - Gobierno del Estado de Morelos
+            </p>
           </div>
         </CardHeader>
+
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             {error && (
@@ -55,6 +76,7 @@ export default function LoginPage() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
+
             <div className="space-y-2">
               <Label htmlFor="email">Correo Electrónico</Label>
               <Input
@@ -66,6 +88,7 @@ export default function LoginPage() {
                 required
               />
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="password">Contraseña</Label>
               <Input
@@ -76,24 +99,11 @@ export default function LoginPage() {
                 required
               />
             </div>
-            <Button type="submit" className="w-full">
-              Iniciar Sesión
+
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Ingresando..." : "Iniciar Sesión"}
             </Button>
           </form>
-          <div className="mt-6 p-4 bg-muted rounded-lg space-y-2">
-            <p className="text-sm font-semibold text-muted-foreground">Usuarios de prueba:</p>
-            <div className="text-xs space-y-1 text-muted-foreground">
-              <p>
-                <strong>Administrador:</strong> admin@morelos.gob.mx / admin123
-              </p>
-              <p>
-                <strong>Editor:</strong> editor@morelos.gob.mx / editor123
-              </p>
-              <p>
-                <strong>Lector:</strong> lector@morelos.gob.mx / lector123
-              </p>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

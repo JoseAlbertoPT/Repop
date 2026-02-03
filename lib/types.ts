@@ -1,12 +1,28 @@
-export type UserRole = "Administrador" | "Editor" | "Lector"
+
+export type UserRole = "ADMIN" | "CAPTURISTA" | "CONSULTA"
+
 
 export interface User {
-  id: string
+  id: number
   name: string
   email: string
-  password: string
   role: UserRole
 }
+
+
+export const roleLabels: Record<UserRole, string> = {
+  ADMIN: "Administrador",
+  CAPTURISTA: "Capturista",
+  CONSULTA: "Consulta",
+}
+
+
+export const roleDescriptions: Record<UserRole, string> = {
+  ADMIN: "Acceso completo al sistema, incluyendo gestión de usuarios",
+  CAPTURISTA: "Puede registrar y consultar información",
+  CONSULTA: "Solo puede consultar información",
+}
+
 
 export type EntityType = "Organismo" | "Fideicomiso" | "EPEM"
 export type EntityStatus = "Activo" | "Inactivo"

@@ -2,48 +2,42 @@
 
 import { useState, useEffect } from "react"
 import type { User, Entity } from "@/lib/types"
-import { useApp } from "@/lib/context/app-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Eye, Edit, Trash2, Building2, FileText, Download } from "lucide-react"
+import { Plus, Search, Eye, Edit, Trash2, Building2, FileText, X, Download } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Checkbox } from "@/components/ui/checkbox"
-import { X } from "lucide-react"
-
-const Lic = "Lic."
-const José = "José"
-const Emanuel = "Emanuel"
-const Coronato = "Coronato"
-const Liñán = "Líñán"
-const br = "<br>"
 
 export default function EntitiesPage() {
-  const { entities, addEntity, updateEntity, deleteEntity } = useApp()
   const { toast } = useToast()
+  const [entities, setEntities] = useState<Entity[]>([])
   const [currentUser, setCurrentUser] = useState<User | null>(null)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [filterType, setFilterType] = useState<"Todos" | "Organismo" | "Fideicomiso" | "EPEM">("Todos")
-  const [filterStatus, setFilterStatus] = useState<"Todos" | "Activo" | "Inactivo">("Todos")
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [selectedEntity, setSelectedEntity] = useState<string | null>(null)
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
 
-  const [formData, setFormData] = useState({
-    type: "Organismo" as "Organismo" | "Fideicomiso" | "EPEM",
+  const [searchTerm, setSearchTerm] = useState("")
+  const [filterType, setFilterType] = useState("Todos")
+  const [filterStatus, setFilterStatus] = useState("Todos")
+
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
+  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null)
+
+  const [showConstanciaEfirmaDialog, setShowConstanciaEfirmaDialog] = useState(false)
+  const [constanciaCerFile, setConstanciaCerFile] = useState<File | null>(null)
+  const [constanciaKeyFile, setConstanciaKeyFile] = useState<File | null>(null)
+  const [constanciaPassword, setConstanciaPassword] = useState("")
+  const [pendingConstanciaEntity, setPendingConstanciaEntity] = useState<Entity | null>(null)
+
+  const [formData, setFormData] = useState<any>({
+    type: "OPD",
     name: "",
     purpose: "",
     address: "",
@@ -51,376 +45,33 @@ export default function EntitiesPage() {
     creationDate: "",
     officialPublication: "",
     observations: "",
-    status: "Activo" as "Activo" | "Inactivo",
+    status: "Activo",
     hasBookAntecedents: false,
-    bookAntecedents: [] as string[],
+    bookAntecedents: [],
     requestLetter: "",
   })
 
-  const [showConstanciaEfirmaDialog, setShowConstanciaEfirmaDialog] = useState(false)
-  const [pendingConstanciaEntity, setPendingConstanciaEntity] = useState<Entity | null>(null)
-  const [constanciaCerFile, setConstanciaCerFile] = useState<File | null>(null)
-  const [constanciaKeyFile, setConstanciaKeyFile] = useState<File | null>(null)
-  const [constanciaPassword, setConstanciaPassword] = useState("")
-
   useEffect(() => {
     const userStr = sessionStorage.getItem("currentUser")
-    if (userStr) {
-      setCurrentUser(JSON.parse(userStr))
-    }
+    if (userStr) setCurrentUser(JSON.parse(userStr))
   }, [])
 
-  const filteredEntities = entities.filter((entity) => {
-    const matchesSearch =
-      entity.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      entity.folio.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesType = filterType === "Todos" || entity.type === filterType
-    const matchesStatus = filterStatus === "Todos" || entity.status === filterStatus
-    return matchesSearch && matchesType && matchesStatus
-  })
-
-  const handleAdd = () => {
-    if (!formData.name || !formData.type) {
-      toast({ title: "Error", description: "Complete los campos requeridos", variant: "destructive" })
-      return
-    }
-
-    addEntity(formData)
-    setIsAddDialogOpen(false)
-    resetForm()
-    toast({ title: "Éxito", description: "Ente registrado correctamente" })
-  }
-
-  const handleEdit = () => {
-    if (selectedEntity) {
-      updateEntity(selectedEntity, formData)
-      toast({
-        title: "Actualizado",
-        description: "El registro ha sido actualizado correctamente",
-      })
-      setIsEditDialogOpen(false)
-      setSelectedEntity(null)
+  const loadEntities = async () => {
+    try {
+      const res = await fetch("/api/entes")
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setEntities(Array.isArray(data) ? data : [])
+    } catch {
+      toast({ title: "Error", description: "No se pudieron cargar los entes", variant: "destructive" })
     }
   }
 
-  const handleDelete = (id: string) => {
-    if (currentUser?.role !== "Administrador") {
-      toast({
-        title: "Sin permisos",
-        description: "Solo los administradores pueden eliminar registros",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (confirm("¿Está seguro de eliminar este registro?")) {
-      deleteEntity(id)
-      toast({
-        title: "Eliminado",
-        description: "El registro ha sido eliminado",
-      })
-    }
-  }
-
-  const openViewDialog = (id: string) => {
-    setSelectedEntity(id)
-    setIsViewDialogOpen(true)
-  }
-
-  const openEditDialog = (id: string) => {
-    const entity = entities.find((e) => e.id === id)
-    if (entity) {
-      setFormData({
-        type: entity.type,
-        name: entity.name,
-        purpose: entity.purpose,
-        address: entity.address,
-        creationInstrument: entity.creationInstrument,
-        creationDate: entity.creationDate,
-        officialPublication: entity.officialPublication,
-        observations: entity.observations,
-        status: entity.status,
-        hasBookAntecedents: entity.hasBookAntecedents || false,
-        bookAntecedents: entity.bookAntecedents || [],
-        requestLetter: entity.requestLetter || "",
-      })
-      setSelectedEntity(id)
-      setIsEditDialogOpen(true)
-    }
-  }
-
-  const initiateConstanciaDownload = (entity: Entity) => {
-    setPendingConstanciaEntity(entity)
-    setShowConstanciaEfirmaDialog(true)
-  }
-
-  const executeConstanciaDownload = async () => {
-    if (!constanciaCerFile || !constanciaKeyFile || !constanciaPassword) {
-      toast({
-        title: "Faltan datos",
-        description: "Debe proporcionar el archivo .cer, .key y la contraseña",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (pendingConstanciaEntity) {
-      await handleDownloadConstancia(pendingConstanciaEntity)
-    }
-
-    setShowConstanciaEfirmaDialog(false)
-    setPendingConstanciaEntity(null)
-    setConstanciaCerFile(null)
-    setConstanciaKeyFile(null)
-    setConstanciaPassword("")
-  }
-
-  const handleDownloadConstancia = async (entity: Entity) => {
-    // Create PDF content as HTML
-    const pdfContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Constancia - ${entity.folio}</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 40px;
-      color: #333;
-    }
-    .header {
-      text-align: center;
-      border-bottom: 3px solid #2E3B2B;
-      padding-bottom: 20px;
-      margin-bottom: 30px;
-    }
-    .logo-text {
-      color: #2E3B2B;
-      font-size: 18px;
-      font-weight: bold;
-      margin: 5px 0;
-    }
-    .title {
-      font-size: 24px;
-      font-weight: bold;
-      color: #7C4A36;
-      margin: 10px 0;
-    }
-    .folio {
-      background: #71785b;
-      color: white;
-      padding: 10px 20px;
-      text-align: center;
-      font-size: 18px;
-      font-weight: bold;
-      margin-bottom: 30px;
-    }
-    .content {
-      line-height: 1.8;
-    }
-    .section {
-      margin-bottom: 20px;
-    }
-    .label {
-      font-weight: bold;
-      color: #2E3B2B;
-      margin-bottom: 5px;
-    }
-    .value {
-      margin-left: 20px;
-      color: #555;
-    }
-    .footer {
-      margin-top: 60px;
-      text-align: center;
-      padding-top: 20px;
-      border-top: 2px solid #bc9b73;
-      font-size: 12px;
-      color: #777;
-    }
-    .badge {
-      background: #2E3B2B;
-      color: white;
-      padding: 4px 12px;
-      border-radius: 4px;
-      font-size: 14px;
-      display: inline-block;
-    }
-    .signature-box {
-      margin-top: 40px;
-      padding: 20px;
-      border: 2px solid #7C4A36;
-      background: #f9f9f9;
-      page-break-inside: avoid;
-    }
-    .signature-title {
-      font-size: 18px;
-      font-weight: bold;
-      color: #2E3B2B;
-      margin-bottom: 15px;
-      text-align: center;
-    }
-    .signature-info {
-      font-size: 13px;
-      color: #333;
-      line-height: 1.8;
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="logo-text">SECRETARÍA DE ADMINISTRACIÓN Y FINANZAS</div>
-    <div class="logo-text">GOBIERNO DEL ESTADO DE MORELOS</div>
-    <div class="title">PROCURADURÍA FISCAL</div>
-    <div class="title">CONSTANCIA DE REGISTRO - REPOPA</div>
-  </div>
-  
-  <div class="folio">FOLIO: ${entity.folio}</div>
-  
-  <div class="content">
-    <div class="section">
-      <div class="label">TIPO DE ENTE:</div>
-      <div class="value"><span class="badge">${entity.type === "Organismo" ? "ORGANISMO DESCENTRALIZADO" : entity.type === "Fideicomiso" ? "FIDEICOMISO" : "EPEM"}</span></div>
-    </div>
-    
-    <div class="section">
-      <div class="label">NOMBRE O DENOMINACIÓN OFICIAL:</div>
-      <div class="value">${entity.name}</div>
-    </div>
-    
-    <div class="section">
-      <div class="label">OBJETO O FINALIDAD:</div>
-      <div class="value">${entity.purpose}</div>
-    </div>
-    
-    ${
-      entity.address
-        ? `
-    <div class="section">
-      <div class="label">DOMICILIO:</div>
-      <div class="value">${entity.address}</div>
-    </div>
-    `
-        : ""
-    }
-    
-    ${
-      entity.creationInstrument
-        ? `
-    <div class="section">
-      <div class="label">INSTRUMENTO DE CREACIÓN:</div>
-      <div class="value">${entity.creationInstrument}</div>
-    </div>
-    `
-        : ""
-    }
-    
-    ${
-      entity.creationDate
-        ? `
-    <div class="section">
-      <div class="label">FECHA DE CREACIÓN:</div>
-      <div class="value">${new Date(entity.creationDate).toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" })}</div>
-    </div>
-    `
-        : ""
-    }
-    
-    ${
-      entity.officialPublication
-        ? `
-    <div class="section">
-      <div class="label">PUBLICACIÓN OFICIAL:</div>
-      <div class="value">${entity.officialPublication}</div>
-    </div>
-    `
-        : ""
-    }
-    
-    <div class="section">
-      <div class="label">ESTATUS:</div>
-      <div class="value"><span class="badge">${entity.status.toUpperCase()}</span></div>
-    </div>
-    
-    <div class="section">
-      <div class="label">FECHA DE EMISIÓN:</div>
-      <div class="value">${new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" })}</div>
-    </div>
-  </div>
-  
-  ${
-    constanciaCerFile && constanciaKeyFile
-      ? `
-  <div class="signature-box">
-    <div class="signature-title">DOCUMENTO FIRMADO ELECTRÓNICAMENTE</div>
-    <div class="signature-info">
-      <strong>Firmante:</strong> Lic. José Emanuel Coronato Liñán<br>
-      <strong>Cargo:</strong> Subprocurador de Recursos y Procedimientos Administrativos<br>
-      <strong>Fecha y hora:</strong> ${new Date().toLocaleString("es-MX")}<br>
-      <strong>Número de certificado:</strong> 00001000000123456789<br>
-      <strong>Cadena de firma:</strong> ${Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15).toUpperCase()}<br>
-      <strong>Leyenda:</strong> Documento firmado electrónicamente
-    </div>
-  </div>
-      `
-      : ""
-  }
-  
-  <div class="footer">
-    <p>Esta constancia certifica que el ente se encuentra registrado en el</p>
-    <p><strong>Registro Público de Organismos Públicos Auxiliares (REPOPA)</strong></p>
-    <p>Procuraduría Fiscal del Gobierno del Estado de Morelos</p>
-    <p>Documento generado electrónicamente</p>
-  </div>
-</body>
-</html>
-    `
-
-    // Create a Blob from the HTML content
-    const blob = new Blob([pdfContent], { type: "text/html" })
-    const url = URL.createObjectURL(blob)
-
-    // Create a temporary link and trigger download
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `Constancia_${entity.folio.replace(/\//g, "-")}.html`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-
-    toast({
-      title: "Constancia generada",
-      description: `Se ha descargado la constancia para ${entity.name}`,
-    })
-  }
-
-  const canEdit = currentUser?.role === "Administrador" || currentUser?.role === "Editor"
-
-  const viewEntity = entities.find((e) => e.id === selectedEntity)
-
-  const handleFileUpload = async (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        resolve(reader.result as string)
-      }
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
-  }
-
-  const getFileInfo = (filePath: string) => {
-    const parts = filePath.split("/")
-    return {
-      name: parts[parts.length - 1],
-    }
-  }
+  useEffect(() => { loadEntities() }, [])
 
   const resetForm = () => {
     setFormData({
-      type: "Organismo",
+      type: "OPD",
       name: "",
       purpose: "",
       address: "",
@@ -435,24 +86,116 @@ export default function EntitiesPage() {
     })
   }
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        resolve(reader.result as string)
-      }
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
+  const handleAdd = async () => {
+    try {
+      const res = await fetch("/api/entes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      })
+      if (!res.ok) throw new Error()
+      toast({ title: "Éxito", description: "Ente registrado correctamente" })
+      setIsAddDialogOpen(false)
+      resetForm()
+      loadEntities()
+    } catch {
+      toast({ title: "Error", description: "No se pudo registrar", variant: "destructive" })
+    }
   }
+
+  const handleEdit = async () => {
+    if (!selectedEntity) return
+    try {
+      const res = await fetch(`/api/entes/${selectedEntity.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      })
+      if (!res.ok) throw new Error()
+      toast({ title: "Actualizado", description: "Registro actualizado correctamente" })
+      setIsEditDialogOpen(false)
+      loadEntities()
+    } catch {
+      toast({ title: "Error", description: "No se pudo actualizar", variant: "destructive" })
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await fetch(`/api/entes/${id}`, { method: "DELETE" })
+      if (!res.ok) throw new Error()
+      toast({ title: "Eliminado", description: "Registro eliminado correctamente" })
+      loadEntities()
+    } catch {
+      toast({ title: "Error", description: "No se pudo eliminar", variant: "destructive" })
+    }
+  }
+
+  const openEditDialog = (id: string) => {
+    const entity = entities.find(e => e.id === id)
+    if (!entity) return
+    setSelectedEntity(entity)
+    setFormData({ ...entity })
+    setIsEditDialogOpen(true)
+  }
+
+  const openViewDialog = (id: string) => {
+    const entity = entities.find(e => e.id === id)
+    if (!entity) return
+    setSelectedEntity(entity)
+    setIsViewDialogOpen(true)
+  }
+
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = error => reject(error)
+    })
+
+  const handleFileUpload = async (file: File) => await fileToBase64(file)
+
+  const getFileInfo = () => ({ name: "Documento PDF" })
+
+  const initiateConstanciaDownload = (entity: Entity) => {
+    setPendingConstanciaEntity(entity)
+    setShowConstanciaEfirmaDialog(true)
+  }
+
+  const executeConstanciaDownload = () => {
+    if (!pendingConstanciaEntity) return
+    const blob = new Blob([`Constancia ${pendingConstanciaEntity.folio}`], { type: "text/plain" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `Constancia_${pendingConstanciaEntity.folio}.txt`
+    link.click()
+    URL.revokeObjectURL(url)
+    toast({ title: "Constancia generada", description: `Descargada para ${pendingConstanciaEntity.name}` })
+    setShowConstanciaEfirmaDialog(false)
+  }
+
+  const filteredEntities = entities.filter(e =>
+    (e.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      e.folio?.toLowerCase().includes(searchTerm.toLowerCase())) &&
+    (filterType === "Todos" || e.type === filterType) &&
+    (filterStatus === "Todos" || e.status === filterStatus)
+  )
+
+  const canEdit = currentUser?.role === "ADMIN" || currentUser?.role === "CAPTURISTA"
+  const isAdmin = currentUser?.role === "ADMIN"
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-balance">Identificación de Entes</h1>
           <p className="text-muted-foreground mt-2">Registro Público de Organismos Públicos Auxiliares</p>
         </div>
+        
+        {/* Add New Entity Dialog */}
         {canEdit && (
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
@@ -478,7 +221,7 @@ export default function EntitiesPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Organismo">Organismo Descentralizado</SelectItem>
+                          <SelectItem value="OPD">Organismo Descentralizado</SelectItem>
                           <SelectItem value="Fideicomiso">Fideicomiso</SelectItem>
                           <SelectItem value="EPEM">EPEM</SelectItem>
                         </SelectContent>
@@ -632,11 +375,10 @@ export default function EntitiesPage() {
                       </div>
                     )}
                   </div>
-                  {/* Removed historical records section */}
                 </div>
               </div>
               <div className="border-t pt-4 mt-4 flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                <Button variant="outline" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
                   Cancelar
                 </Button>
                 <Button onClick={handleAdd}>Registrar</Button>
@@ -646,6 +388,7 @@ export default function EntitiesPage() {
         )}
       </div>
 
+      {/* Filters and Search */}
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -669,7 +412,7 @@ export default function EntitiesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Todos">Todos</SelectItem>
-                  <SelectItem value="Organismo">Organismos</SelectItem>
+                  <SelectItem value="OPD">Organismos</SelectItem>
                   <SelectItem value="Fideicomiso">Fideicomisos</SelectItem>
                   <SelectItem value="EPEM">EPEM</SelectItem>
                 </SelectContent>
@@ -695,7 +438,13 @@ export default function EntitiesPage() {
                 className="flex items-start gap-4 p-4 border border-border rounded-lg hover:bg-accent/50 transition-colors"
               >
                 <div
-                  className={`p-3 rounded-lg ${entity.type === "Organismo" ? "bg-primary/10 text-primary" : entity.type === "Fideicomiso" ? "bg-secondary/10 text-secondary" : "bg-tertiary/10 text-tertiary"}`}
+                  className={`p-3 rounded-lg ${
+                    entity.type === "OPD" 
+                      ? "bg-primary/10 text-primary" 
+                      : entity.type === "Fideicomiso" 
+                        ? "bg-secondary/10 text-secondary" 
+                        : "bg-tertiary/10 text-tertiary"
+                  }`}
                 >
                   <Building2 className="w-6 h-6" />
                 </div>
@@ -708,11 +457,11 @@ export default function EntitiesPage() {
                     <div className="flex gap-1">
                       <Badge
                         variant={
-                          entity.type === "Organismo"
+                          entity.type === "OPD"
                             ? "default"
                             : entity.type === "Fideicomiso"
                               ? "secondary"
-                              : "tertiary"
+                              : "outline"
                         }
                       >
                         {entity.type}
@@ -732,7 +481,7 @@ export default function EntitiesPage() {
                         Editar
                       </Button>
                     )}
-                    {currentUser?.role === "Administrador" && (
+                    {isAdmin && (
                       <Button variant="outline" size="sm" onClick={() => handleDelete(entity.id)}>
                         <Trash2 className="w-4 h-4 mr-1" />
                         Eliminar
@@ -762,69 +511,58 @@ export default function EntitiesPage() {
           <DialogHeader>
             <DialogTitle>Detalles del Registro</DialogTitle>
           </DialogHeader>
-          {viewEntity && (
+          {selectedEntity && (
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Folio</Label>
-                  <p className="font-semibold">{viewEntity.folio}</p>
+                  <p className="font-semibold">{selectedEntity.folio}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Tipo</Label>
-                  <p className="font-semibold">{viewEntity.type}</p>
+                  <p className="font-semibold">{selectedEntity.type}</p>
                 </div>
               </div>
               <div>
                 <Label className="text-muted-foreground">Nombre</Label>
-                <p className="font-semibold">{viewEntity.name}</p>
+                <p className="font-semibold">{selectedEntity.name}</p>
               </div>
               <div>
                 <Label className="text-muted-foreground">Objeto o Finalidad</Label>
-                <p>{viewEntity.purpose}</p>
+                <p>{selectedEntity.purpose}</p>
               </div>
               <div>
                 <Label className="text-muted-foreground">Domicilio</Label>
-                <p>{viewEntity.address || "No especificado"}</p>
+                <p>{selectedEntity.address || "No especificado"}</p>
               </div>
               <div>
                 <Label className="text-muted-foreground">Instrumento de Creación</Label>
-                <p>{viewEntity.creationInstrument || "No especificado"}</p>
+                <p>{selectedEntity.creationInstrument || "No especificado"}</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Fecha de Creación</Label>
-                  <p>{viewEntity.creationDate || "No especificado"}</p>
+                  <p>{selectedEntity.creationDate || "No especificado"}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Estatus</Label>
-                  <Badge variant={viewEntity.status === "Activo" ? "default" : "outline"}>{viewEntity.status}</Badge>
+                  <Badge variant={selectedEntity.status === "Activo" ? "default" : "outline"}>{selectedEntity.status}</Badge>
                 </div>
               </div>
               <div>
                 <Label className="text-muted-foreground">Publicación Oficial</Label>
-                <p>{viewEntity.officialPublication || "No especificado"}</p>
+                <p>{selectedEntity.officialPublication || "No especificado"}</p>
               </div>
-              {viewEntity.requestLetter && (
+              {selectedEntity.requestLetter && (
                 <div>
                   <Label className="text-muted-foreground">Oficio de Solicitud</Label>
-                  <p>{viewEntity.requestLetter}</p>
+                  <p>{selectedEntity.requestLetter}</p>
                 </div>
               )}
               <div>
                 <Label className="text-muted-foreground">Observaciones</Label>
-                <p>{viewEntity.observations || "Sin observaciones"}</p>
+                <p>{selectedEntity.observations || "Sin observaciones"}</p>
               </div>
-              {viewEntity.hasBookAntecedents && (
-                <div>
-                  <Label className="text-muted-foreground">Documentos PDF de Antecedentes</Label>
-                  <ul>
-                    {viewEntity.bookAntecedents.map((doc, index) => (
-                      <li key={index}>{doc}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {/* Removed historical documents display */}
             </div>
           )}
         </DialogContent>
@@ -845,7 +583,7 @@ export default function EntitiesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Organismo">Organismo Descentralizado</SelectItem>
+                    <SelectItem value="OPD">Organismo Descentralizado</SelectItem>
                     <SelectItem value="Fideicomiso">Fideicomiso</SelectItem>
                     <SelectItem value="EPEM">EPEM</SelectItem>
                   </SelectContent>
@@ -924,12 +662,12 @@ export default function EntitiesPage() {
               <div className="flex items-center space-x-2">
                 <input
                   type="checkbox"
-                  id="hasBookAntecedents"
+                  id="hasBookAntecedents-edit"
                   checked={formData.hasBookAntecedents}
                   onChange={(e) => setFormData({ ...formData, hasBookAntecedents: e.target.checked })}
                   className="w-4 h-4 rounded border-input"
                 />
-                <Label htmlFor="hasBookAntecedents" className="cursor-pointer">
+                <Label htmlFor="hasBookAntecedents-edit" className="cursor-pointer">
                   Selecciona si existen antecedentes en libro
                 </Label>
               </div>
@@ -940,7 +678,7 @@ export default function EntitiesPage() {
                   <div className="space-y-2">
                     {formData.bookAntecedents.map((doc, index) => (
                       <div key={index} className="flex items-center gap-2">
-                        <Input value={doc} readOnly className="flex-1" />
+                        <Input value={`Documento ${index + 1}`} readOnly className="flex-1" />
                         <Button
                           type="button"
                           variant="outline"
@@ -986,18 +724,11 @@ export default function EntitiesPage() {
                         }}
                         className="flex-1"
                       />
-                      <Button type="button" variant="outline" size="sm" disabled>
-                        <Plus className="w-4 h-4" />
-                      </Button>
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Cargue los documentos PDF que contienen antecedentes del registro en libro físico
-                  </p>
                 </div>
               )}
             </div>
-            {/* Removed historical records section */}
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
@@ -1008,6 +739,7 @@ export default function EntitiesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* E-firma Dialog for Constancia */}
       <Dialog open={showConstanciaEfirmaDialog} onOpenChange={setShowConstanciaEfirmaDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>

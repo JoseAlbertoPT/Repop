@@ -14,13 +14,51 @@ import { Plus, Search, Edit, Trash2, Users, Save, Eye } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
+// Función auxiliar para formatear fechas
+const formatDate = (dateString: string | null | undefined): string => {
+  if (!dateString) return "No especificada"
+  
+  try {
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) return "No especificada"
+    
+    // Formatear como DD/MM/YYYY
+    const day = date.getDate().toString().padStart(2, '0')
+    const month = (date.getMonth() + 1).toString().padStart(2, '0')
+    const year = date.getFullYear()
+    
+    return `${day}/${month}/${year}`
+  } catch (error) {
+    return "No especificada"
+  }
+}
+
+// Función para convertir fecha a formato YYYY-MM-DD para input date
+const formatDateForInput = (dateString: string | null | undefined): string => {
+  if (!dateString) return ""
+  
+  try {
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) return ""
+    
+    return date.toISOString().split('T')[0]
+  } catch (error) {
+    return ""
+  }
+}
+
 export default function GoverningBodiesPage() {
-  const { entities, governingBodies, addGoverningBody, updateGoverningBody, deleteGoverningBody } = useApp()
+  const { governingBodies, addGoverningBody, updateGoverningBody, deleteGoverningBody } = useApp()
   const { toast } = useToast()
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterEntity, setFilterEntity] = useState<string>("Todos")
   const [filterStatus, setFilterStatus] = useState<"Todos" | "Activo" | "Concluido">("Todos")
+  
+  // Estado local para manejar los integrantes y entes desde la API
+  const [localGoverningBodies, setLocalGoverningBodies] = useState<GoverningBody[]>([])
+  const [localEntities, setLocalEntities] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(false)
 
   const [isAddingBatch, setIsAddingBatch] = useState(false)
   const [batchMembers, setBatchMembers] = useState<Array<Omit<GoverningBody, "id">>>([])
@@ -49,13 +87,75 @@ export default function GoverningBodiesPage() {
     }
   }, [])
 
-  const filteredBodies = governingBodies.filter((body) => {
-    const entity = entities.find((e) => e.id === body.entityId)
+  // Cargar entes desde la API
+  const loadEntities = async () => {
+    try {
+      const res = await fetch("/api/entes")
+      const data = await res.json()
+      console.log("Entes cargados desde API:", data)
+      console.log("Primer ente:", data[0])
+      setLocalEntities(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error("Error loading entities:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los entes",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Cargar integrantes desde la API
+  const loadGoverningBodies = async () => {
+    setIsLoading(true)
+    try {
+      const res = await fetch("/api/integrantes-organo")
+      const data = await res.json()
+      console.log("Integrantes cargados:", data)
+      console.log("Primer integrante:", data[0])
+      setLocalGoverningBodies(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error("Error loading governing bodies:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los integrantes",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Cargar entes e integrantes al montar el componente
+  useEffect(() => {
+    loadEntities()
+    loadGoverningBodies()
+  }, [])
+
+  // Debug: ver los datos cargados
+  useEffect(() => {
+    console.log("=== DEBUG DATOS ===")
+    console.log("localEntities:", localEntities)
+    console.log("localGoverningBodies:", localGoverningBodies)
+    if (localGoverningBodies.length > 0 && localEntities.length > 0) {
+      const firstBody = localGoverningBodies[0]
+      console.log("Primer integrante:", firstBody)
+      console.log("Su entityId:", firstBody.entityId, "tipo:", typeof firstBody.entityId)
+      const foundEntity = localEntities.find((e) => Number(e.id) === Number(firstBody.entityId))
+      console.log("Ente encontrado?:", foundEntity)
+      console.log("Todos los IDs de entes:", localEntities.map(e => ({ id: e.id, tipo: typeof e.id, name: e.name })))
+    }
+  }, [localEntities, localGoverningBodies])
+
+  // Usar localGoverningBodies y localEntities en lugar del contexto
+  const filteredBodies = localGoverningBodies.filter((body) => {
+    const entity = localEntities.find((e) => Number(e.id) === Number(body.entityId))
+    const entityName = body.entityName || entity?.name
     const matchesSearch =
       body.memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       body.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      entity?.name.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesEntity = filterEntity === "Todos" || body.entityId === filterEntity
+      entityName?.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesEntity = filterEntity === "Todos" || Number(body.entityId) === Number(filterEntity)
     const matchesStatus = filterStatus === "Todos" || body.status === filterStatus
     return matchesSearch && matchesEntity && matchesStatus
   })
@@ -89,10 +189,9 @@ export default function GoverningBodiesPage() {
       })
     }
 
-    // Reset form
     setFormData({
-      entityId: formData.entityId, // Keep the same entity
-      bodyType: formData.bodyType, // Keep the same body type
+      entityId: formData.entityId, 
+      bodyType: formData.bodyType, 
       memberName: "",
       position: "",
       appointmentDate: "",
@@ -102,7 +201,7 @@ export default function GoverningBodiesPage() {
     })
   }
 
-  const handleSaveBatch = () => {
+  const handleSaveBatch = async () => {
     if (batchMembers.length === 0) {
       toast({
         title: "Error",
@@ -112,27 +211,65 @@ export default function GoverningBodiesPage() {
       return
     }
 
-    batchMembers.forEach((member) => {
-      addGoverningBody(member)
-    })
+    setIsLoading(true)
+    try {
+      let successCount = 0
+      for (const member of batchMembers) {
+        const res = await fetch("/api/integrantes-organo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(member),
+        })
+        
+        if (res.ok) {
+          successCount++
+        } else {
+          const error = await res.json()
+          console.error("Error al guardar:", error)
+        }
+      }
 
-    toast({
-      title: "Registrados",
-      description: `Se registraron ${batchMembers.length} integrantes correctamente`,
-    })
-
-    setIsAddingBatch(false)
-    setBatchMembers([])
-    setFormData({
-      entityId: "",
-      bodyType: "",
-      memberName: "",
-      position: "",
-      appointmentDate: "",
-      designationInstrument: "",
-      status: "Activo",
-      observations: "",
-    })
+      if (successCount === batchMembers.length) {
+        toast({
+          title: "Registrados",
+          description: `Se registraron ${successCount} integrantes correctamente`,
+        })
+        
+        setIsAddingBatch(false)
+        setBatchMembers([])
+        setEditingIndex(null)
+        setFormData({
+          entityId: "",
+          bodyType: "",
+          memberName: "",
+          position: "",
+          appointmentDate: "",
+          designationInstrument: "",
+          status: "Activo",
+          observations: "",
+        })
+        
+        // Recargar los datos desde la API
+        await loadGoverningBodies()
+      } else {
+        toast({
+          title: "Parcialmente completado",
+          description: `Se registraron ${successCount} de ${batchMembers.length} integrantes`,
+          variant: "destructive",
+        })
+        // Recargar de todos modos para mostrar los que sí se guardaron
+        await loadGoverningBodies()
+      }
+    } catch (error) {
+      console.error("Error saving batch:", error)
+      toast({
+        title: "Error",
+        description: "Error al guardar integrantes",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleEditBatchMember = (index: number) => {
@@ -148,40 +285,61 @@ export default function GoverningBodiesPage() {
     })
   }
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!selectedBody) return
 
-    updateGoverningBody(selectedBody.id, editFormData)
-    toast({
-      title: "Actualizado",
-      description: "El integrante ha sido actualizado correctamente",
-    })
-    setEditDialogOpen(false)
-    setSelectedBody(null)
-    setEditFormData({})
+    try {
+      const res = await fetch("/api/integrantes-organo", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...editFormData, id: selectedBody.id }),
+      })
+
+      if (res.ok) {
+        toast({
+          title: "Actualizado",
+          description: "El integrante ha sido actualizado correctamente",
+        })
+        setEditDialogOpen(false)
+        setSelectedBody(null)
+        setEditFormData({})
+        await loadGoverningBodies()
+      }
+    } catch (error) {
+      console.error("Error updating:", error)
+      toast({
+        title: "Error",
+        description: "Error al actualizar",
+        variant: "destructive",
+      })
+    }
   }
 
-  const canEdit = currentUser?.role === "Administrador" || currentUser?.role === "Editor"
+  const canEdit = currentUser?.role === "ADMIN" || currentUser?.role === "CAPTURISTA"
+  const isAdmin = currentUser?.role === "ADMIN"
 
-  const openViewDialog = (id: string) => {
-    const body = governingBodies.find((b) => b.id === id)
+  const openViewDialog = (id: number) => {
+    const body = localGoverningBodies.find((b) => b.id === id)
     if (body) {
       setSelectedBody(body)
       setViewDialogOpen(true)
     }
   }
 
-  const openEditDialog = (id: string) => {
-    const body = governingBodies.find((b) => b.id === id)
+  const openEditDialog = (id: number) => {
+    const body = localGoverningBodies.find((b) => b.id === id)
     if (body) {
       setSelectedBody(body)
-      setEditFormData(body)
+      setEditFormData({ 
+        ...body, 
+        appointmentDate: formatDateForInput(body.appointmentDate)
+      })
       setEditDialogOpen(true)
     }
   }
 
-  const handleDelete = (id: string) => {
-    if (currentUser?.role !== "Administrador") {
+  const handleDelete = async (id: number) => {
+    if (!isAdmin) {
       toast({
         title: "Sin permisos",
         description: "Solo los administradores pueden eliminar registros",
@@ -190,11 +348,25 @@ export default function GoverningBodiesPage() {
       return
     }
 
-    if (confirm("¿Está seguro de eliminar este registro?")) {
-      deleteGoverningBody(id)
+    try {
+      const res = await fetch(`/api/integrantes-organo/${id}`, {
+        method: "DELETE",
+      })
+
+      if (!res.ok) throw new Error()
+
       toast({
         title: "Eliminado",
         description: "El registro ha sido eliminado",
+      })
+
+      await loadGoverningBodies()
+    } catch (error) {
+      console.error(error)
+      toast({
+        title: "Error",
+        description: "No se pudo eliminar",
+        variant: "destructive",
       })
     }
   }
@@ -221,7 +393,7 @@ export default function GoverningBodiesPage() {
             <CardDescription>Complete el formulario y agregue múltiples integrantes antes de guardar</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Form */}
+            {/* Formulario */}
             <div className="space-y-4 p-4 border border-border rounded-lg bg-accent/30">
               <h3 className="font-semibold text-lg">
                 {editingIndex !== null ? "Editar Integrante" : "Nuevo Integrante"}
@@ -233,12 +405,12 @@ export default function GoverningBodiesPage() {
                     value={formData.entityId}
                     onValueChange={(value) => setFormData({ ...formData, entityId: value })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="min-w-[300px]">
                       <SelectValue placeholder="Seleccione un ente" />
                     </SelectTrigger>
-                    <SelectContent>
-                      {entities.map((entity) => (
-                        <SelectItem key={entity.id} value={entity.id}>
+                    <SelectContent className="max-h-[400px] min-w-[400px]">
+                      {localEntities.map((entity) => (
+                        <SelectItem key={entity.id} value={String(entity.id)} className="whitespace-normal">
                           {entity.name}
                         </SelectItem>
                       ))}
@@ -323,13 +495,13 @@ export default function GoverningBodiesPage() {
               </div>
             </div>
 
-            {/* Batch Members List */}
+            {/* Lista de integrantes a guardar */}
             {batchMembers.length > 0 && (
               <div className="space-y-2">
                 <h3 className="font-semibold text-lg">Integrantes a Registrar ({batchMembers.length})</h3>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {batchMembers.map((member, index) => {
-                    const entity = entities.find((e) => e.id === member.entityId)
+                    const entity = localEntities.find((e) => Number(e.id) === Number(member.entityId))
                     return (
                       <div
                         key={index}
@@ -339,7 +511,7 @@ export default function GoverningBodiesPage() {
                           <p className="font-semibold">{member.memberName}</p>
                           <p className="text-sm text-muted-foreground">{member.position}</p>
                           <p className="text-xs text-muted-foreground">
-                            {entity?.name} - {member.bodyType}
+                            {entity?.nombre_oficial} - {member.bodyType}
                           </p>
                         </div>
                         <div className="flex gap-1">
@@ -357,13 +529,14 @@ export default function GoverningBodiesPage() {
               </div>
             )}
 
-            {/* Action Buttons */}
+            {/* Botones de acción */}
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button
                 variant="outline"
                 onClick={() => {
                   setIsAddingBatch(false)
                   setBatchMembers([])
+                  setEditingIndex(null)
                   setFormData({
                     entityId: "",
                     bodyType: "",
@@ -378,9 +551,9 @@ export default function GoverningBodiesPage() {
               >
                 Cancelar
               </Button>
-              <Button onClick={handleSaveBatch} disabled={batchMembers.length === 0}>
+              <Button onClick={handleSaveBatch} disabled={batchMembers.length === 0 || isLoading}>
                 <Save className="w-4 h-4 mr-2" />
-                Guardar Todos ({batchMembers.length})
+                {isLoading ? "Guardando..." : `Guardar Todos (${batchMembers.length})`}
               </Button>
             </div>
           </CardContent>
@@ -398,7 +571,7 @@ export default function GoverningBodiesPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Ente</Label>
-                  <p className="font-medium">{entities.find((e) => e.id === selectedBody.entityId)?.name}</p>
+                  <p className="font-medium">{selectedBody.entityName || localEntities.find((e) => Number(e.id) === Number(selectedBody.entityId))?.name || "No especificado"}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Tipo de Órgano</Label>
@@ -414,7 +587,7 @@ export default function GoverningBodiesPage() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Fecha de Nombramiento</Label>
-                  <p className="font-medium">{selectedBody.appointmentDate || "No especificada"}</p>
+                  <p className="font-medium">{formatDate(selectedBody.appointmentDate)}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Estatus</Label>
@@ -453,15 +626,15 @@ export default function GoverningBodiesPage() {
                 <div className="space-y-2">
                   <Label htmlFor="edit-entityId">Ente</Label>
                   <Select
-                    value={editFormData.entityId}
-                    onValueChange={(value) => setEditFormData({ ...editFormData, entityId: value })}
+                    value={String(editFormData.entityId)}
+                    onValueChange={(value) => setEditFormData({ ...editFormData, entityId: Number(value) })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="min-w-[300px]">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
-                      {entities.map((entity) => (
-                        <SelectItem key={entity.id} value={entity.id}>
+                    <SelectContent className="max-h-[400px] min-w-[400px]">
+                      {localEntities.map((entity) => (
+                        <SelectItem key={entity.id} value={String(entity.id)} className="whitespace-normal">
                           {entity.name}
                         </SelectItem>
                       ))}
@@ -550,7 +723,9 @@ export default function GoverningBodiesPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>Integrantes Registrados</CardTitle>
-              <CardDescription>{filteredBodies.length} integrantes en el sistema</CardDescription>
+              <CardDescription>
+                {isLoading ? "Cargando..." : `${filteredBodies.length} integrantes en el sistema`}
+              </CardDescription>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="relative">
@@ -563,14 +738,14 @@ export default function GoverningBodiesPage() {
                 />
               </div>
               <Select value={filterEntity} onValueChange={setFilterEntity}>
-                <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue />
+                <SelectTrigger className="w-full sm:w-[280px]">
+                  <SelectValue placeholder="Todos los entes" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Todos">Todos</SelectItem>
-                  {entities.map((entity) => (
-                    <SelectItem key={entity.id} value={entity.id}>
-                      {entity.name.substring(0, 30)}...
+                <SelectContent className="max-h-[400px] min-w-[350px]">
+                  <SelectItem value="Todos">Todos los entes</SelectItem>
+                  {localEntities.map((entity) => (
+                    <SelectItem key={entity.id} value={String(entity.id)} className="whitespace-normal py-3">
+                      {entity.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -591,7 +766,9 @@ export default function GoverningBodiesPage() {
         <CardContent>
           <div className="space-y-4">
             {filteredBodies.map((body) => {
-              const entity = entities.find((e) => e.id === body.entityId)
+              // Usar entityName si viene de la API, sino buscar en localEntities
+              const entityName = body.entityName || localEntities.find((e) => Number(e.id) === Number(body.entityId))?.name
+              
               return (
                 <div
                   key={body.id}
@@ -610,13 +787,13 @@ export default function GoverningBodiesPage() {
                     </div>
                     <div className="space-y-1 text-sm text-muted-foreground mb-3">
                       <p>
-                        <strong>Ente:</strong> {entity?.name}
+                        <strong>Ente:</strong> {entityName || "No especificado"}
                       </p>
                       <p>
                         <strong>Órgano:</strong> {body.bodyType || "No especificado"}
                       </p>
                       <p>
-                        <strong>Nombramiento:</strong> {body.appointmentDate || "No especificado"}
+                        <strong>Nombramiento:</strong> {formatDate(body.appointmentDate)}
                       </p>
                     </div>
                     <div className="flex gap-1">
@@ -628,7 +805,7 @@ export default function GoverningBodiesPage() {
                           <Edit className="w-4 h-4" />
                         </Button>
                       )}
-                      {currentUser?.role === "Administrador" && (
+                      {isAdmin && (
                         <Button variant="ghost" size="sm" onClick={() => handleDelete(body.id)} title="Eliminar">
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -638,10 +815,15 @@ export default function GoverningBodiesPage() {
                 </div>
               )
             })}
-            {filteredBodies.length === 0 && (
+            {filteredBodies.length === 0 && !isLoading && (
               <div className="text-center py-12 text-muted-foreground">
                 <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No se encontraron integrantes</p>
+              </div>
+            )}
+            {isLoading && (
+              <div className="text-center py-12 text-muted-foreground">
+                <p>Cargando integrantes...</p>
               </div>
             )}
           </div>

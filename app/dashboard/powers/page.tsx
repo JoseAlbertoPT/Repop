@@ -1,10 +1,8 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
-import type { User, Power } from "@/lib/types"
-import { useApp } from "@/lib/context/app-context"
+import type { User } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,21 +16,88 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Edit, Trash2, Award, File } from "lucide-react"
+import { Plus, Search, Edit, Trash2, Award, Eye, File, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { handleFileUpload, getFileInfo, downloadFile } from "@/lib/file-utils"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+
+interface Power {
+  id: number
+  entityId: number
+  powerType: string
+  attorneys: string[] | string  
+  grantDate: string | null
+  revocationDate: string | null
+  document: string | null
+  fileUrl: string | null
+  notes: string | null
+}
+
+interface Entity {
+  id: number
+  folio: string
+  name: string
+  type: string
+  purpose: string
+  address: string
+  status: string
+}
+
+const formatDate = (dateString: string | null | undefined): string => {
+  if (!dateString) return "No especificada"
+  try {
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) return "No especificada"
+    const day = date.getDate().toString().padStart(2, '0')
+    const month = (date.getMonth() + 1).toString().padStart(2, '0')
+    const year = date.getFullYear()
+    return `${day}/${month}/${year}`
+  } catch (error) {
+    return "No especificada"
+  }
+}
+
+const formatDateForInput = (dateString: string | null | undefined): string => {
+  if (!dateString) return ""
+  try {
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) return ""
+    return date.toISOString().split('T')[0]
+  } catch (error) {
+    return ""
+  }
+}
+
+const getAttorneysArray = (attorneys: string[] | string): string[] => {
+  if (Array.isArray(attorneys)) {
+    return attorneys
+  }
+  if (typeof attorneys === 'string') {
+    try {
+      const parsed = JSON.parse(attorneys)
+      return Array.isArray(parsed) ? parsed : []
+    } catch (e) {
+      return []
+    }
+  }
+  return []
+}
 
 export default function PowersPage() {
-  const { entities, powers, addPower, updatePower, deletePower } = useApp()
   const { toast } = useToast()
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterEntity, setFilterEntity] = useState<string>("Todos")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [selectedPower, setSelectedPower] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [uploadedFile, setUploadedFile] = useState<string>("")
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
+  const [selectedPower, setSelectedPower] = useState<Power | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [uploadedFileName, setUploadedFileName] = useState<string>("")
+  const [validationErrors, setValidationErrors] = useState<string[]>([])
+  
+  const [powers, setPowers] = useState<Power[]>([])
+  const [entities, setEntities] = useState<Entity[]>([])
 
   const [formData, setFormData] = useState({
     entityId: "",
@@ -49,60 +114,268 @@ export default function PowersPage() {
     }
   }, [])
 
+  // Cargar los entes desde la API
+  const loadEntities = async () => {
+    try {
+      const res = await fetch("/api/entes")
+      const data = await res.json()
+      console.log("Entes cargados:", data)
+      setEntities(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error("Error loading entities:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los entes",
+        variant: "destructive",
+      })
+      setEntities([])
+    }
+  }
+
+  const loadPowers = async () => {
+    setIsLoading(true)
+    try {
+      const res = await fetch("/api/poderes")
+      if (!res.ok) {
+        const errorData = await res.json()
+        throw new Error(errorData.error || "Error al cargar poderes")
+      }
+      const data = await res.json()
+      setPowers(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error("Error loading powers:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudieron cargar los poderes",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadEntities()
+    loadPowers()
+  }, [])
+
   const filteredPowers = powers.filter((power) => {
     const entity = entities.find((e) => e.id === power.entityId)
+    const attorneys = getAttorneysArray(power.attorneys)
+    
     const matchesSearch =
-      power.attorneys.some((attorney) => attorney.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      attorneys.some((attorney) => attorney.toLowerCase().includes(searchTerm.toLowerCase())) ||
       power.powerType.toLowerCase().includes(searchTerm.toLowerCase()) ||
       entity?.name.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesEntity = filterEntity === "Todos" || power.entityId === filterEntity
+    const matchesEntity = filterEntity === "Todos" || String(power.entityId) === filterEntity
     return matchesSearch && matchesEntity
   })
 
-  const handleAdd = () => {
-    if (!formData.entityId || !formData.powerType || formData.attorneys.filter((a) => a.trim()).length === 0) {
+  const validateForm = (): boolean => {
+    const errors: string[] = []
+    
+    if (!formData.entityId || formData.entityId.trim() === "") {
+      errors.push("Debe seleccionar un ente")
+    }
+    
+    if (!formData.powerType || formData.powerType.trim() === "") {
+      errors.push("El tipo de poder es requerido")
+    }
+    
+    const validAttorneys = formData.attorneys.filter((a) => a.trim() !== "")
+    if (validAttorneys.length === 0) {
+      errors.push("Debe agregar al menos un apoderado")
+    }
+    
+    setValidationErrors(errors)
+    return errors.length === 0
+  }
+
+  const resetForm = () => {
+    setFormData({
+      entityId: "",
+      powerType: "",
+      attorneys: [""],
+      grantDate: "",
+      document: "",
+    })
+    setUploadedFile(null)
+    setUploadedFileName("")
+    setValidationErrors([])
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "Archivo muy grande",
+          description: "El archivo no debe superar los 5MB",
+          variant: "destructive",
+        })
+        return
+      }
+      setUploadedFile(file)
+      setUploadedFileName(file.name)
+    }
+  }
+
+  const handleAdd = async () => {
+    if (!validateForm()) {
       toast({
-        title: "Error",
-        description: "Complete los campos requeridos",
+        title: "Error de validación",
+        description: "Por favor corrija los errores antes de continuar",
         variant: "destructive",
       })
       return
     }
 
-    const newPower: Power = {
-      id: Date.now().toString(),
-      entityId: formData.entityId,
-      powerType: formData.powerType,
-      attorneys: formData.attorneys.filter((a) => a.trim()), // Filter empty attorneys
-      grantDate: formData.grantDate,
-      document: formData.document,
-    }
+    const validAttorneys = formData.attorneys.filter((a) => a.trim() !== "")
+    
+    setIsLoading(true)
+    try {
+      let fileUrl = null
+      if (uploadedFile) {
+        try {
+          const reader = new FileReader()
+          fileUrl = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => resolve(reader.result as string)
+            reader.onerror = () => reject(new Error("Error al leer el archivo"))
+            reader.readAsDataURL(uploadedFile)
+          })
+        } catch (error) {
+          console.error("Error reading file:", error)
+          toast({
+            title: "Error",
+            description: "No se pudo procesar el archivo",
+            variant: "destructive",
+          })
+          return
+        }
+      }
 
-    addPower(newPower)
-    setIsAddDialogOpen(false)
-    setUploadedFile("")
-    setFormData({ entityId: "", powerType: "", attorneys: [""], grantDate: "", document: "" })
-    toast({
-      title: "Poder registrado",
-      description: "El poder se ha registrado correctamente",
-    })
-  }
+      const payload = {
+        entityId: parseInt(formData.entityId),
+        powerType: formData.powerType.trim(),
+        attorneys: validAttorneys,  
+        grantDate: formData.grantDate || null,
+        document: formData.document.trim() || null,
+        fileUrl: fileUrl,
+      }
 
-  const handleEdit = () => {
-    if (selectedPower && editingId) {
-      updatePower(editingId, formData)
-      toast({
-        title: "Actualizado",
-        description: "El registro ha sido actualizado correctamente",
+      console.log("📤 Enviando datos:", payload)
+
+      const res = await fetch("/api/poderes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       })
-      setIsEditDialogOpen(false)
-      setSelectedPower(null)
-      setEditingId(null)
+
+      const responseData = await res.json()
+      console.log("✅ Respuesta del servidor:", responseData)
+
+      if (res.ok) {
+        toast({
+          title: "✓ Poder registrado",
+          description: "El poder ha sido registrado correctamente",
+        })
+        setIsAddDialogOpen(false)
+        resetForm()
+        await loadPowers()
+      } else {
+        console.error("Error response:", responseData)
+        toast({
+          title: "Error al guardar",
+          description: responseData.error || "Error desconocido al guardar el poder",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("❌ Error saving power:", error)
+      toast({
+        title: "Error de conexión",
+        description: "No se pudo conectar con el servidor. Verifique su conexión.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const handleDelete = (id: string) => {
-    if (currentUser?.role !== "Administrador") {
+  const handleEdit = async () => {
+    if (!selectedPower) return
+
+    if (!validateForm()) {
+      toast({
+        title: "Error de validación",
+        description: "Por favor corrija los errores antes de continuar",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const validAttorneys = formData.attorneys.filter((a) => a.trim() !== "")
+    
+    setIsLoading(true)
+    try {
+      let fileUrl = selectedPower.fileUrl
+      if (uploadedFile) {
+        const reader = new FileReader()
+        fileUrl = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = () => reject(new Error("Error al leer el archivo"))
+          reader.readAsDataURL(uploadedFile)
+        })
+      }
+
+      const payload = {
+        id: selectedPower.id,
+        entityId: parseInt(formData.entityId),
+        powerType: formData.powerType.trim(),
+        attorneys: validAttorneys,  
+        grantDate: formData.grantDate || null,
+        document: formData.document.trim() || null,
+        fileUrl: fileUrl,
+      }
+
+      const res = await fetch("/api/poderes", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      const responseData = await res.json()
+
+      if (res.ok) {
+        toast({
+          title: "✓ Actualizado",
+          description: "El registro ha sido actualizado correctamente",
+        })
+        setIsEditDialogOpen(false)
+        setSelectedPower(null)
+        resetForm()
+        await loadPowers()
+      } else {
+        toast({
+          title: "Error",
+          description: responseData.error || "Error al actualizar",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error updating power:", error)
+      toast({
+        title: "Error",
+        description: "Error de conexión al actualizar",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    if (currentUser?.role !== "ADMIN") {
       toast({
         title: "Sin permisos",
         description: "Solo los administradores pueden eliminar registros",
@@ -111,41 +384,79 @@ export default function PowersPage() {
       return
     }
 
-    if (confirm("¿Está seguro de eliminar este registro?")) {
-      deletePower(id)
+    setIsLoading(true)
+    try {
+      const res = await fetch(`/api/poderes?id=${id}`, {
+        method: "DELETE",
+      })
+
+      if (res.ok) {
+        toast({
+          title: "✓ Eliminado",
+          description: "El registro ha sido eliminado",
+        })
+        await loadPowers()
+      } else {
+        const error = await res.json()
+        toast({
+          title: "Error",
+          description: error.error || "Error al eliminar",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error deleting power:", error)
       toast({
-        title: "Eliminado",
-        description: "El registro ha sido eliminado",
+        title: "Error",
+        description: "Error de conexión al eliminar",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const openEditDialog = (power: Power) => {
+    const attorneys = getAttorneysArray(power.attorneys)
+    
+    setFormData({
+      entityId: String(power.entityId),
+      powerType: power.powerType,
+      attorneys: attorneys.length > 0 ? attorneys : [""],
+      grantDate: formatDateForInput(power.grantDate),
+      document: power.document || "",
+    })
+    setSelectedPower(power)
+    setUploadedFileName(power.fileUrl ? "Archivo actual" : "")
+    setValidationErrors([])
+    setIsEditDialogOpen(true)
+  }
+
+  const openViewDialog = (power: Power) => {
+    setSelectedPower(power)
+    setIsViewDialogOpen(true)
+  }
+
+  const downloadPowerFile = (fileUrl: string | null) => {
+    if (!fileUrl) return
+    
+    try {
+      const link = document.createElement('a')
+      link.href = fileUrl
+      link.download = 'poder.pdf'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo descargar el archivo",
+        variant: "destructive",
       })
     }
   }
 
-  const openEditDialog = (id: string) => {
-    const power = powers.find((p) => p.id === id)
-    if (power) {
-      setFormData({
-        entityId: power.entityId,
-        powerType: power.powerType,
-        attorneys: power.attorneys.length > 0 ? power.attorneys : [""], // Ensure at least one field
-        grantDate: power.grantDate || "",
-        document: power.document || "",
-      })
-      setEditingId(id)
-      setUploadedFile(power.document || "")
-      setIsEditDialogOpen(true)
-    }
-  }
-
-  const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    const uploaded = await handleFileUpload(file)
-    setUploadedFile(uploaded)
-    setFormData({ ...formData, document: uploaded })
-  }
-
-  const canEdit = currentUser?.role === "Administrador" || currentUser?.role === "Editor"
+  const canEdit = currentUser?.role === "ADMIN" || currentUser?.role === "CAPTURISTA"
 
   return (
     <div className="space-y-6">
@@ -155,18 +466,35 @@ export default function PowersPage() {
           <p className="text-muted-foreground mt-2">Control interno de poderes otorgados</p>
         </div>
         {canEdit && (
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+            setIsAddDialogOpen(open)
+            if (!open) resetForm()
+          }}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="w-4 h-4 mr-2" />
                 Nuevo Poder
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Registrar Nuevo Poder</DialogTitle>
                 <DialogDescription>Complete la información del poder otorgado</DialogDescription>
               </DialogHeader>
+              
+              {validationErrors.length > 0 && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    <ul className="list-disc list-inside">
+                      {validationErrors.map((error, index) => (
+                        <li key={index}>{error}</li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label htmlFor="entityId">Ente *</Label>
@@ -178,11 +506,17 @@ export default function PowersPage() {
                       <SelectValue placeholder="Seleccione un ente" />
                     </SelectTrigger>
                     <SelectContent>
-                      {entities.map((entity) => (
-                        <SelectItem key={entity.id} value={entity.id}>
-                          {entity.name}
+                      {entities.length === 0 ? (
+                        <SelectItem value="ninguno" disabled>
+                          No hay entes disponibles
                         </SelectItem>
-                      ))}
+                      ) : (
+                        entities.map((entity) => (
+                          <SelectItem key={entity.id} value={String(entity.id)}>
+                            {entity.name}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -255,11 +589,11 @@ export default function PowersPage() {
                   <Input
                     type="file"
                     accept=".pdf,.doc,.docx"
-                    onChange={handleDocFileUpload}
+                    onChange={handleFileChange}
                     className="cursor-pointer"
                   />
-                  {uploadedFile && (
-                    <p className="text-sm text-muted-foreground">Archivo cargado: {getFileInfo(uploadedFile)?.name}</p>
+                  {uploadedFileName && (
+                    <p className="text-sm text-muted-foreground">Archivo cargado: {uploadedFileName}</p>
                   )}
                 </div>
                 <div className="space-y-2">
@@ -273,22 +607,207 @@ export default function PowersPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isLoading}>
                   Cancelar
                 </Button>
-                <Button onClick={handleAdd}>Registrar</Button>
+                <Button onClick={handleAdd} disabled={isLoading}>
+                  {isLoading ? "Guardando..." : "Registrar"}
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
         )}
       </div>
 
+      {/* Diálogo de ver detalles */}
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Detalles del Poder</DialogTitle>
+          </DialogHeader>
+          {selectedPower && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">Ente</Label>
+                  <p className="font-medium">
+                    {entities.find((e) => e.id === selectedPower.entityId)?.name || "No especificado"}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Tipo de Poder</Label>
+                  <p className="font-medium">{selectedPower.powerType}</p>
+                </div>
+                <div className="col-span-2">
+                  <Label className="text-muted-foreground">Apoderados</Label>
+                  <p className="font-medium">
+                    {(() => {
+                      const attorneys = getAttorneysArray(selectedPower.attorneys)
+                      return attorneys.length > 0 ? attorneys.join(", ") : "No especificado"
+                    })()}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Fecha de Otorgamiento</Label>
+                  <p className="font-medium">{formatDate(selectedPower.grantDate)}</p>
+                </div>
+                <div className="col-span-2">
+                  <Label className="text-muted-foreground">Documento</Label>
+                  <p className="font-medium">{selectedPower.document || "No especificado"}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="flex justify-end">
+            <Button onClick={() => setIsViewDialogOpen(false)}>Cerrar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de editar */}
+      <Dialog
+        open={isEditDialogOpen}
+        onOpenChange={(open) => {
+          setIsEditDialogOpen(open)
+          if (!open) {
+            resetForm()
+            setSelectedPower(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Poder</DialogTitle>
+            <DialogDescription>Modifique la información del poder</DialogDescription>
+          </DialogHeader>
+
+          {validationErrors.length > 0 && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <ul className="list-disc list-inside">
+                  {validationErrors.map((error, index) => (
+                    <li key={index}>{error}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Ente *</Label>
+              <Select
+                value={formData.entityId}
+                onValueChange={(value) => setFormData({ ...formData, entityId: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccione un ente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {entities.map((entity) => (
+                    <SelectItem key={entity.id} value={String(entity.id)}>
+                      {entity.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Tipo de Poder *</Label>
+              <Input
+                value={formData.powerType}
+                onChange={(e) => setFormData({ ...formData, powerType: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Apoderado(s) *</Label>
+              {formData.attorneys.map((attorney, index) => (
+                <div key={index} className="flex gap-2">
+                  <Input
+                    value={attorney}
+                    onChange={(e) => {
+                      const newAttorneys = [...formData.attorneys]
+                      newAttorneys[index] = e.target.value
+                      setFormData({ ...formData, attorneys: newAttorneys })
+                    }}
+                    className="flex-1"
+                  />
+                  {formData.attorneys.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const newAttorneys = formData.attorneys.filter((_, i) => i !== index)
+                        setFormData({ ...formData, attorneys: newAttorneys })
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setFormData({ ...formData, attorneys: [...formData.attorneys, ""] })
+                }
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Agregar Otro Apoderado
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Fecha de Nombramiento</Label>
+              <Input
+                type="date"
+                value={formData.grantDate}
+                onChange={(e) => setFormData({ ...formData, grantDate: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Documento del Poder</Label>
+              <Input type="file" accept=".pdf,.doc,.docx" onChange={handleFileChange} />
+              {uploadedFileName && (
+                <p className="text-sm text-muted-foreground">Archivo: {uploadedFileName}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Referencia del Documento</Label>
+              <Input
+                value={formData.document}
+                onChange={(e) => setFormData({ ...formData, document: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleEdit} disabled={isLoading}>
+              {isLoading ? "Guardando..." : "Guardar Cambios"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>Poderes Registrados</CardTitle>
-              <CardDescription>{filteredPowers.length} poderes en el sistema</CardDescription>
+              <CardDescription>
+                {isLoading ? "Cargando..." : `${filteredPowers.length} poderes en el sistema`}
+              </CardDescription>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="relative">
@@ -307,7 +826,7 @@ export default function PowersPage() {
                 <SelectContent>
                   <SelectItem value="Todos">Todos los entes</SelectItem>
                   {entities.map((entity) => (
-                    <SelectItem key={entity.id} value={entity.id}>
+                    <SelectItem key={entity.id} value={String(entity.id)}>
                       {entity.name}
                     </SelectItem>
                   ))}
@@ -320,6 +839,8 @@ export default function PowersPage() {
           <div className="space-y-4">
             {filteredPowers.map((power) => {
               const entity = entities.find((e) => e.id === power.entityId)
+              const attorneys = getAttorneysArray(power.attorneys)
+              
               return (
                 <div
                   key={power.id}
@@ -332,15 +853,17 @@ export default function PowersPage() {
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div>
                         <h3 className="font-semibold text-lg">{power.powerType}</h3>
-                        <p className="text-sm text-muted-foreground">Apoderados: {power.attorneys.join(", ")}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Apoderados: {attorneys.length > 0 ? attorneys.join(", ") : "No especificado"}
+                        </p>
                       </div>
                     </div>
                     <div className="space-y-1 text-sm text-muted-foreground mb-3">
                       <p>
-                        <strong>Ente:</strong> {entity?.name}
+                        <strong>Ente:</strong> {entity?.name || "No especificado"}
                       </p>
                       <p>
-                        <strong>Otorgamiento:</strong> {power.grantDate || "No especificado"}
+                        <strong>Otorgamiento:</strong> {formatDate(power.grantDate)}
                       </p>
                       {power.document && (
                         <p>
@@ -349,21 +872,46 @@ export default function PowersPage() {
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => openViewDialog(power)}
+                        className="bg-background rounded-lg"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Ver
+                      </Button>
                       {canEdit && (
-                        <Button variant="outline" size="sm" onClick={() => openEditDialog(power.id)}>
-                          <Edit className="w-4 h-4 mr-1" />
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => openEditDialog(power)}
+                          className="bg-background rounded-lg"
+                        >
+                          <Edit className="w-4 h-4 mr-2" />
                           Editar
                         </Button>
                       )}
-                      {currentUser?.role === "Administrador" && (
-                        <Button variant="outline" size="sm" onClick={() => handleDelete(power.id)}>
-                          <Trash2 className="w-4 h-4 mr-1" />
+                      {currentUser?.role === "ADMIN" && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => handleDelete(power.id)}
+                          className="bg-background rounded-lg"
+                          disabled={isLoading}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
                           Eliminar
                         </Button>
                       )}
-                      {power.document && getFileInfo(power.document)?.data && (
-                        <Button variant="outline" size="sm" onClick={() => downloadFile(power.document)}>
-                          <File className="w-4 h-4 mr-1" />
+                      {power.fileUrl && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => downloadPowerFile(power.fileUrl)}
+                          className="bg-background rounded-lg"
+                        >
+                          <File className="w-4 h-4 mr-2" />
                           Descargar Documento
                         </Button>
                       )}
@@ -372,122 +920,20 @@ export default function PowersPage() {
                 </div>
               )
             })}
-            {filteredPowers.length === 0 && (
+            {filteredPowers.length === 0 && !isLoading && (
               <div className="text-center py-12 text-muted-foreground">
                 <Award className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No se encontraron poderes</p>
               </div>
             )}
+            {isLoading && (
+              <div className="text-center py-12 text-muted-foreground">
+                <p>Cargando poderes...</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
-
-      {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Editar Poder</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Ente</Label>
-              <Select
-                value={formData.entityId}
-                onValueChange={(value) => setFormData({ ...formData, entityId: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {entities.map((entity) => (
-                    <SelectItem key={entity.id} value={entity.id}>
-                      {entity.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Tipo de Poder</Label>
-              <Input
-                value={formData.powerType}
-                onChange={(e) => setFormData({ ...formData, powerType: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Apoderado(s)</Label>
-              <div className="space-y-2">
-                {formData.attorneys.map((attorney, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <Input
-                      value={attorney}
-                      onChange={(e) => {
-                        const newAttorneys = [...formData.attorneys]
-                        newAttorneys[index] = e.target.value
-                        setFormData({ ...formData, attorneys: newAttorneys })
-                      }}
-                      placeholder={`Nombre del apoderado ${index + 1}`}
-                      className="flex-1"
-                    />
-                    {formData.attorneys.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const newAttorneys = formData.attorneys.filter((_, i) => i !== index)
-                          setFormData({ ...formData, attorneys: newAttorneys })
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setFormData({ ...formData, attorneys: [...formData.attorneys, ""] })
-                  }}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Agregar Otro Apoderado
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Fecha de Otorgamiento</Label>
-              <Input
-                type="date"
-                value={formData.grantDate}
-                onChange={(e) => setFormData({ ...formData, grantDate: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Documento del Poder</Label>
-              <Input type="file" accept=".pdf,.doc,.docx" onChange={handleDocFileUpload} className="cursor-pointer" />
-              {uploadedFile && (
-                <p className="text-sm text-muted-foreground">Archivo cargado: {getFileInfo(uploadedFile)?.name}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Referencia del Documento</Label>
-              <Input
-                value={formData.document}
-                onChange={(e) => setFormData({ ...formData, document: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleEdit}>Guardar Cambios</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

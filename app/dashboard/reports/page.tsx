@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import type { User } from "@/lib/types"
-import { useApp } from "@/lib/context/app-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -17,7 +16,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 
 export default function ReportsPage() {
-  const { entities, governingBodies, directors, powers, regulatoryDocs } = useApp()
   const { toast } = useToast()
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [reportType, setReportType] = useState<string>("general")
@@ -36,6 +34,11 @@ export default function ReportsPage() {
   const [keyFile, setKeyFile] = useState<File | null>(null)
   const [efirmaPassword, setEfirmaPassword] = useState("")
 
+  //   Estado para datos de la API
+  const [apiData, setApiData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
     const userStr = sessionStorage.getItem("currentUser")
     if (userStr) {
@@ -43,10 +46,52 @@ export default function ReportsPage() {
     }
   }, [])
 
+  //   Fetch a la API con mejor manejo de errores
+  useEffect(() => {
+    const loadReports = async () => {
+      try {
+        console.log("Fetching reports from API...")
+        const res = await fetch("/api/reportes?type=all")
+
+        console.log("Response status:", res.status)
+        
+        if (!res.ok) {
+          const errorText = await res.text()
+          console.error("API Error Response:", errorText)
+          throw new Error(`Error ${res.status}: ${errorText}`)
+        }
+
+        const data = await res.json()
+        console.log("API Data received:", data)
+        setApiData(data)
+        setError(null)
+      } catch (error) {
+        console.error("Error loading reports:", error)
+        setError(error instanceof Error ? error.message : "Error desconocido")
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar los reportes. Verifica la consola para más detalles.",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadReports()
+  }, [toast])
+
+  //   Reemplazar variables seguras con datos de la API
+  const safeEntities = apiData?.entities || []
+  const safeGoverningBodies = apiData?.governingBodies || []
+  const safeDirectors = apiData?.directors || []
+  const safePowers = apiData?.powers || []
+  const safeRegulatoryDocs = apiData?.regulatoryDocs || []
+
   const getMonthlyTrendData = () => {
     const monthlyData: Record<string, { month: string; Organismos: number; Fideicomisos: number; EPEMs: number }> = {}
 
-    entities.forEach((entity) => {
+    safeEntities.forEach((entity) => {
       if (entity.createdAt) {
         const date = new Date(entity.createdAt)
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
@@ -65,7 +110,7 @@ export default function ReportsPage() {
     return Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month))
   }
 
-  const filteredEntities = entities.filter((e) => {
+  const filteredEntities = safeEntities.filter((e) => {
     const matchesType = filterType === "Todos" || e.type === filterType
     const matchesStatus = statusFilter === "Todos" || e.status === statusFilter
     const matchesDateFrom = !dateFrom || (e.createdAt && e.createdAt >= dateFrom)
@@ -80,21 +125,21 @@ export default function ReportsPage() {
   }
 
   const toggleSelectAll = () => {
-    if (selectedEntities.length === entities.length) {
+    if (selectedEntities.length === safeEntities.length) {
       setSelectedEntities([])
     } else {
-      setSelectedEntities(entities.map((e) => e.id))
+      setSelectedEntities(safeEntities.map((e) => e.id))
     }
   }
 
   const getChangeHistoryData = () => {
-    const selectedEntityData = entities.filter((e) => selectedEntities.includes(e.id))
+    const selectedEntityData = safeEntities.filter((e) => selectedEntities.includes(e.id))
 
     return selectedEntityData.map((entity) => {
-      const entityDocs = regulatoryDocs.filter((d) => d.entityId === entity.id)
-      const entityBodies = governingBodies.filter((b) => b.entityId === entity.id)
-      const entityDirectors = directors.filter((d) => d.entityId === entity.id)
-      const entityPowers = powers.filter((p) => p.entityId === entity.id)
+      const entityDocs = safeRegulatoryDocs.filter((d) => d.entityId === entity.id)
+      const entityBodies = safeGoverningBodies.filter((b) => b.entityId === entity.id)
+      const entityDirectors = safeDirectors.filter((d) => d.entityId === entity.id)
+      const entityPowers = safePowers.filter((p) => p.entityId === entity.id)
 
       return {
         entity,
@@ -553,19 +598,50 @@ export default function ReportsPage() {
   }
 
   const stats = {
-    totalEntities: entities.length,
-    organisms: entities.filter((e) => e.type === "Organismo").length,
-    trusts: entities.filter((e) => e.type === "Fideicomiso").length,
-    epems: entities.filter((e) => e.type === "EPEM").length,
-    activeEntities: entities.filter((e) => e.status === "Activo").length,
-    totalGoverningMembers: governingBodies.length,
-    activeGoverningMembers: governingBodies.filter((g) => g.status === "Activo").length,
-    totalDirectors: directors.length,
-    activePowers: powers.filter((p) => !p.revocation).length,
-    regulatoryDocs: regulatoryDocs.length,
+    totalEntities: safeEntities.length,
+    organisms: safeEntities.filter((e) => e.type === "Organismo").length,
+    trusts: safeEntities.filter((e) => e.type === "Fideicomiso").length,
+    epems: safeEntities.filter((e) => e.type === "EPEM").length,
+    activeEntities: safeEntities.filter((e) => e.status === "Activo").length,
+    totalGoverningMembers: safeGoverningBodies.length,
+    activeGoverningMembers: safeGoverningBodies.filter((g) => g.status === "Activo").length,
+    totalDirectors: safeDirectors.length,
+    activePowers: safePowers.filter((p) => !p.revocation).length,
+    regulatoryDocs: safeRegulatoryDocs.length,
   }
 
   const trendData = getMonthlyTrendData()
+
+  //  CAMBIO 4 — Loading UI mejorado
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Cargando reportes...</p>
+        </div>
+      </div>
+    )
+  }
+
+  //  Error UI
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle className="text-destructive">Error al cargar reportes</CardTitle>
+            <CardDescription>{error}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => window.location.reload()}>
+              Reintentar
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -636,13 +712,13 @@ export default function ReportsPage() {
                 <CardDescription>Elija los entes que desea incluir en el reporte</CardDescription>
               </div>
               <Button variant="outline" size="sm" onClick={toggleSelectAll}>
-                {selectedEntities.length === entities.length ? "Deseleccionar Todos" : "Seleccionar Todos"}
+                {selectedEntities.length === safeEntities.length ? "Deseleccionar Todos" : "Seleccionar Todos"}
               </Button>
             </div>
           </CardHeader>
           <CardContent>
             <div className="max-h-96 overflow-y-auto space-y-2">
-              {entities.map((entity) => (
+              {safeEntities.map((entity) => (
                 <div key={entity.id} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50">
                   <Checkbox
                     checked={selectedEntities.includes(entity.id)}
@@ -684,7 +760,7 @@ export default function ReportsPage() {
           <CardContent>
             <div className="text-2xl font-bold">{stats.activeEntities}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {((stats.activeEntities / stats.totalEntities) * 100).toFixed(0)}% del total
+              {stats.totalEntities > 0 ? ((stats.activeEntities / stats.totalEntities) * 100).toFixed(0) : 0}% del total
             </p>
           </CardContent>
         </Card>
@@ -793,13 +869,12 @@ export default function ReportsPage() {
             </Button>
           </div>
 
-          {/* Entity Selector Panel */}
           {showEntitySelector && (
             <div className="border border-border rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold">Seleccionar Entes para Reporte</h3>
                 <Button variant="outline" size="sm" onClick={toggleSelectAll}>
-                  {selectedEntities.length === entities.length ? "Deseleccionar Todos" : "Seleccionar Todos"}
+                  {selectedEntities.length === safeEntities.length ? "Deseleccionar Todos" : "Seleccionar Todos"}
                 </Button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
@@ -820,75 +895,13 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {showEfirmaDialog && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-              <Card className="w-full max-w-md mx-4">
-                <CardHeader>
-                  <CardTitle>Firmar Documento con e.firma</CardTitle>
-                  <CardDescription>
-                    Proporcione sus archivos de e.firma para firmar digitalmente el documento
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="cerFile">Archivo CER (Certificado) *</Label>
-                    <Input
-                      id="cerFile"
-                      type="file"
-                      accept=".cer"
-                      onChange={(e) => setCerFile(e.target.files?.[0] || null)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="keyFile">Archivo KEY (Clave Privada) *</Label>
-                    <Input
-                      id="keyFile"
-                      type="file"
-                      accept=".key"
-                      onChange={(e) => setKeyFile(e.target.files?.[0] || null)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="efirmaPassword">Contraseña de Clave Privada *</Label>
-                    <Input
-                      id="efirmaPassword"
-                      type="password"
-                      value={efirmaPassword}
-                      onChange={(e) => setEfirmaPassword(e.target.value)}
-                      placeholder="Ingrese su contraseña"
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-4">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setShowEfirmaDialog(false)
-                        setPendingExport(null)
-                        setCerFile(null)
-                        setKeyFile(null)
-                        setEfirmaPassword("")
-                      }}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button onClick={executeExportWithSignature}>Firmar y Exportar</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Statistics Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 border-t">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Total de Entes</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{entities.length}</div>
+                <div className="text-2xl font-bold">{safeEntities.length}</div>
               </CardContent>
             </Card>
 
@@ -898,7 +911,7 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-primary">
-                  {entities.filter((e) => e.type === "Organismo").length}
+                  {safeEntities.filter((e) => e.type === "Organismo").length}
                 </div>
               </CardContent>
             </Card>
@@ -909,7 +922,7 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-secondary">
-                  {entities.filter((e) => e.type === "Fideicomiso").length}
+                  {safeEntities.filter((e) => e.type === "Fideicomiso").length}
                 </div>
               </CardContent>
             </Card>
@@ -919,7 +932,7 @@ export default function ReportsPage() {
                 <CardTitle className="text-sm font-medium text-muted-foreground">EPEM</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-accent">{entities.filter((e) => e.type === "EPEM").length}</div>
+                <div className="text-2xl font-bold text-accent">{safeEntities.filter((e) => e.type === "EPEM").length}</div>
               </CardContent>
             </Card>
 
@@ -928,7 +941,7 @@ export default function ReportsPage() {
                 <CardTitle className="text-sm font-medium text-muted-foreground">Integrantes</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{governingBodies.length}</div>
+                <div className="text-2xl font-bold">{safeGoverningBodies.length}</div>
               </CardContent>
             </Card>
 
@@ -937,7 +950,7 @@ export default function ReportsPage() {
                 <CardTitle className="text-sm font-medium text-muted-foreground">Directores</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{directors.length}</div>
+                <div className="text-2xl font-bold">{safeDirectors.length}</div>
               </CardContent>
             </Card>
           </div>
@@ -980,7 +993,7 @@ export default function ReportsPage() {
                   <div className="space-y-2">
                     <p className="text-sm font-medium">Poderes Vigentes</p>
                     <p className="text-2xl font-bold">{stats.activePowers}</p>
-                    <p className="text-xs text-muted-foreground">De {powers.length} registrados</p>
+                    <p className="text-xs text-muted-foreground">De {safePowers.length} registrados</p>
                   </div>
                 </div>
               </div>
@@ -994,7 +1007,7 @@ export default function ReportsPage() {
                       <div className="w-32 h-2 bg-muted rounded-full overflow-hidden">
                         <div
                           className="h-full bg-primary"
-                          style={{ width: `${(stats.organisms / stats.totalEntities) * 100}%` }}
+                          style={{ width: stats.totalEntities > 0 ? `${(stats.organisms / stats.totalEntities) * 100}%` : '0%' }}
                         />
                       </div>
                       <span className="text-sm font-medium w-12 text-right">{stats.organisms}</span>
@@ -1006,7 +1019,7 @@ export default function ReportsPage() {
                       <div className="w-32 h-2 bg-muted rounded-full overflow-hidden">
                         <div
                           className="h-full bg-secondary"
-                          style={{ width: `${(stats.trusts / stats.totalEntities) * 100}%` }}
+                          style={{ width: stats.totalEntities > 0 ? `${(stats.trusts / stats.totalEntities) * 100}%` : '0%' }}
                         />
                       </div>
                       <span className="text-sm font-medium w-12 text-right">{stats.trusts}</span>
@@ -1018,7 +1031,7 @@ export default function ReportsPage() {
                       <div className="w-32 h-2 bg-muted rounded-full overflow-hidden">
                         <div
                           className="h-full bg-accent"
-                          style={{ width: `${(stats.epems / stats.totalEntities) * 100}%` }}
+                          style={{ width: stats.totalEntities > 0 ? `${(stats.epems / stats.totalEntities) * 100}%` : '0%' }}
                         />
                       </div>
                       <span className="text-sm font-medium w-12 text-right">{stats.epems}</span>
@@ -1082,7 +1095,7 @@ export default function ReportsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Integrantes</CardTitle>
-            <CardDescription>{governingBodies.length} integrantes registrados</CardDescription>
+            <CardDescription>{safeGoverningBodies.length} integrantes registrados</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -1096,8 +1109,8 @@ export default function ReportsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {governingBodies.map((body) => {
-                  const entity = entities.find((e) => e.id === body.entityId)
+                {safeGoverningBodies.map((body) => {
+                  const entity = safeEntities.find((e) => e.id === body.entityId)
                   return (
                     <TableRow key={body.id}>
                       <TableCell className="font-medium">{body.memberName}</TableCell>
@@ -1120,7 +1133,7 @@ export default function ReportsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Dirección y Representación</CardTitle>
-            <CardDescription>{directors.length} responsables registrados</CardDescription>
+            <CardDescription>{safeDirectors.length} responsables registrados</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -1134,8 +1147,8 @@ export default function ReportsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {directors.map((director) => {
-                  const entity = entities.find((e) => e.id === director.entityId)
+                {safeDirectors.map((director) => {
+                  const entity = safeEntities.find((e) => e.id === director.entityId)
                   const isActive = !director.endDate || new Date(director.endDate) > new Date()
                   return (
                     <TableRow key={director.id}>
@@ -1159,7 +1172,7 @@ export default function ReportsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Poderes y Facultades</CardTitle>
-            <CardDescription>{powers.length} poderes registrados</CardDescription>
+            <CardDescription>{safePowers.length} poderes registrados</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -1173,8 +1186,8 @@ export default function ReportsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {powers.map((power) => {
-                  const entity = entities.find((e) => e.id === power.entityId)
+                {safePowers.map((power) => {
+                  const entity = safeEntities.find((e) => e.id === power.entityId)
                   const isActive = !power.revocation && (!power.validity || new Date(power.validity) > new Date())
                   return (
                     <TableRow key={power.id}>

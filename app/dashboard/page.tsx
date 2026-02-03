@@ -3,11 +3,9 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Building2, FileText, Users, AlertCircle, Factory } from "lucide-react"
-import { useApp } from "@/lib/context/app-context"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function DashboardPage() {
-  const { entities } = useApp()
   const [stats, setStats] = useState({
     totalEntities: 0,
     activeOrganisms: 0,
@@ -15,18 +13,29 @@ export default function DashboardPage() {
     activeEPEM: 0,
   })
 
-  useEffect(() => {
-    const organisms = entities.filter((e) => e.type === "Organismo").length
-    const trusts = entities.filter((e) => e.type === "Fideicomiso").length
-    const epem = entities.filter((e) => e.type === "EPEM").length
+  const [recentEntities, setRecentEntities] = useState<any[]>([])
 
-    setStats({
-      totalEntities: entities.length,
-      activeOrganisms: organisms,
-      activeTrusts: trusts,
-      activeEPEM: epem,
-    })
-  }, [entities])
+  useEffect(() => {
+    async function loadStats() {
+      try {
+        const res = await fetch("/api/dashboard/stats")
+        const data = await res.json()
+
+        setStats({
+          totalEntities: data.totalEntities,
+          activeOrganisms: data.activeOrganisms,
+          activeTrusts: data.activeTrusts,
+          activeEPEM: data.activeEPEM,
+        })
+
+        setRecentEntities(data.recentEntities)
+      } catch (error) {
+        console.error("Error cargando dashboard:", error)
+      }
+    }
+
+    loadStats()
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -44,7 +53,7 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total de Entes</CardTitle>
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -55,7 +64,7 @@ export default function DashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Organismos</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -66,7 +75,7 @@ export default function DashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Fideicomisos</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -77,7 +86,7 @@ export default function DashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">EPEM</CardTitle>
             <Factory className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -96,21 +105,25 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {entities.slice(0, 5).map((entity) => (
+              {recentEntities.map((entity) => (
                 <div
                   key={entity.id}
                   className="flex items-start gap-4 border-b border-border pb-3 last:border-0 last:pb-0"
                 >
                   <div
                     className={`p-2 rounded-lg ${
-                      entity.type === "Organismo"
+                      entity.tipo_ente === "OPD"
                         ? "bg-primary/10 text-primary"
-                        : entity.type === "Fideicomiso"
-                          ? "bg-secondary/10 text-secondary"
-                          : "bg-accent/10 text-accent-foreground"
+                        : entity.tipo_ente === "FI"
+                        ? "bg-secondary/10 text-secondary"
+                        : "bg-accent/10 text-accent-foreground"
                     }`}
                   >
-                    {entity.type === "EPEM" ? <Factory className="w-4 h-4" /> : <Building2 className="w-4 h-4" />}
+                    {entity.tipo_ente === "EPEM" ? (
+                      <Factory className="w-4 h-4" />
+                    ) : (
+                      <Building2 className="w-4 h-4" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{entity.name}</p>
@@ -129,21 +142,21 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between">
                 <span className="text-sm">Organismos Públicos Descentralizados</span>
                 <span className="text-sm font-bold">{stats.activeOrganisms}</span>
               </div>
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between">
                 <span className="text-sm">Fideicomisos</span>
                 <span className="text-sm font-bold">{stats.activeTrusts}</span>
               </div>
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between">
                 <span className="text-sm">Empresas Participación Estatal</span>
                 <span className="text-sm font-bold">{stats.activeEPEM}</span>
               </div>
-              <div className="flex justify-between items-center pt-3 border-t border-border">
-                <span className="text-sm font-semibold">Total</span>
-                <span className="text-sm font-bold">{stats.totalEntities}</span>
+              <div className="flex justify-between pt-3 border-t border-border font-semibold">
+                <span>Total</span>
+                <span>{stats.totalEntities}</span>
               </div>
             </div>
           </CardContent>

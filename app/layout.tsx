@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
+import { AppProvider } from "@/lib/context/app-context"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -10,7 +11,8 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "REPOPA - Sistema de Registro",
-  description: "Sistema de Registro Público de Organismos Públicos Auxiliares - Gobierno del Estado de Morelos",
+  description:
+    "Sistema de Registro Público de Organismos Públicos Auxiliares - Gobierno del Estado de Morelos",
   generator: "v0.app",
   icons: {
     icon: [
@@ -38,10 +40,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={`font-sans antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-          {children}
+      <body className="font-sans antialiased">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {}
+          <AppProvider>
+            {children}
+          </AppProvider>
         </ThemeProvider>
+
         <Analytics />
       </body>
     </html>

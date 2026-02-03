@@ -32,14 +32,15 @@ export default function UsersPage() {
   const [filterRole, setFilterRole] = useState<string>("Todos")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [selectedUser, setSelectedUser] = useState<string | null>(null)
+  const [selectedUser, setSelectedUser] = useState<number | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
 
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
-    role: "Lector" as UserRole,
+    role: "CAPTURISTA" as UserRole,
   })
 
   useEffect(() => {
@@ -49,7 +50,7 @@ export default function UsersPage() {
       setCurrentUser(user)
 
       // Only administrators can access this page
-      if (user.role !== "Administrador") {
+      if (user.role !== "ADMIN") {
         toast({
           title: "Acceso Denegado",
           description: "Solo los administradores pueden gestionar usuarios",
@@ -60,7 +61,10 @@ export default function UsersPage() {
     }
   }, [router, toast])
 
-  const filteredUsers = users.filter((user) => {
+  // Safety check for undefined users array
+  const safeUsers = users || []
+
+  const filteredUsers = safeUsers.filter((user) => {
     const matchesSearch =
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -68,7 +72,7 @@ export default function UsersPage() {
     return matchesSearch && matchesRole
   })
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!formData.name || !formData.email || !formData.password) {
       toast({
         title: "Error",
@@ -79,7 +83,7 @@ export default function UsersPage() {
     }
 
     // Check if email already exists
-    if (users.some((u) => u.email === formData.email)) {
+    if (safeUsers.some((u) => u.email === formData.email)) {
       toast({
         title: "Error",
         description: "El correo electrónico ya está registrado",
@@ -88,34 +92,71 @@ export default function UsersPage() {
       return
     }
 
-    addUser(formData)
-    toast({
-      title: "Usuario registrado",
-      description: `El usuario ${formData.name} ha sido creado correctamente`,
-    })
-    setIsAddDialogOpen(false)
-    setFormData({
-      name: "",
-      email: "",
-      password: "",
-      role: "Lector",
-    })
+    setIsLoading(true)
+    try {
+      await addUser(formData)
+      toast({
+        title: "Usuario registrado",
+        description: `El usuario ${formData.name} ha sido creado correctamente`,
+      })
+      setIsAddDialogOpen(false)
+      setFormData({
+        name: "",
+        email: "",
+        password: "",
+        role: "CAPTURISTA",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo crear el usuario. Por favor intente nuevamente.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleEdit = () => {
-    if (selectedUser) {
-      updateUser(selectedUser, formData)
+  const handleEdit = async () => {
+    if (selectedUser === null) return
+
+    if (!formData.name || !formData.email) {
+      toast({
+        title: "Error",
+        description: "Por favor complete todos los campos requeridos",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      await updateUser(selectedUser, formData)
       toast({
         title: "Actualizado",
         description: "El usuario ha sido actualizado correctamente",
       })
       setIsEditDialogOpen(false)
       setSelectedUser(null)
+      setFormData({
+        name: "",
+        email: "",
+        password: "",
+        role: "CAPTURISTA",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el usuario. Por favor intente nuevamente.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const handleDelete = (id: string) => {
-    const userToDelete = users.find((u) => u.id === id)
+  const handleDelete = async (id: number) => {
+    const userToDelete = safeUsers.find((u) => u.id === id)
 
     // Prevent deleting yourself
     if (currentUser?.id === id) {
@@ -128,21 +169,32 @@ export default function UsersPage() {
     }
 
     if (confirm(`¿Está seguro de eliminar al usuario ${userToDelete?.name}?`)) {
-      deleteUser(id)
-      toast({
-        title: "Eliminado",
-        description: "El usuario ha sido eliminado",
-      })
+      setIsLoading(true)
+      try {
+        await deleteUser(id)
+        toast({
+          title: "Eliminado",
+          description: "El usuario ha sido eliminado",
+        })
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "No se pudo eliminar el usuario. Por favor intente nuevamente.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
     }
   }
 
-  const openEditDialog = (id: string) => {
-    const user = users.find((u) => u.id === id)
+  const openEditDialog = (id: number) => {
+    const user = safeUsers.find((u) => u.id === id)
     if (user) {
       setFormData({
         name: user.name,
         email: user.email,
-        password: user.password,
+        password: "",
         role: user.role,
       })
       setSelectedUser(id)
@@ -152,11 +204,11 @@ export default function UsersPage() {
 
   const getRoleBadgeVariant = (role: UserRole) => {
     switch (role) {
-      case "Administrador":
+      case "ADMIN":
         return "default"
-      case "Editor":
+      case "CAPTURISTA":
         return "secondary"
-      case "Lector":
+      case "CONSULTA":
         return "outline"
       default:
         return "outline"
@@ -165,18 +217,31 @@ export default function UsersPage() {
 
   const getRoleIcon = (role: UserRole) => {
     switch (role) {
-      case "Administrador":
+      case "ADMIN":
         return <Shield className="w-4 h-4" />
-      case "Editor":
+      case "CAPTURISTA":
         return <Edit className="w-4 h-4" />
-      case "Lector":
+      case "CONSULTA":
         return <Eye className="w-4 h-4" />
       default:
         return <UserCog className="w-4 h-4" />
     }
   }
 
-  if (currentUser?.role !== "Administrador") {
+  const getRoleLabel = (role: UserRole) => {
+    switch (role) {
+      case "ADMIN":
+        return "Administrador"
+      case "CAPTURISTA":
+        return "Capturista"
+      case "CONSULTA":
+        return "Consulta"
+      default:
+        return role
+    }
+  }
+
+  if (currentUser?.role !== "ADMIN") {
     return null
   }
 
@@ -250,22 +315,22 @@ export default function UsersPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Administrador">
+                    <SelectItem value="ADMIN">
                       <div className="flex items-center gap-2">
                         <Shield className="w-4 h-4" />
                         Administrador
                       </div>
                     </SelectItem>
-                    <SelectItem value="Editor">
+                    <SelectItem value="CAPTURISTA">
                       <div className="flex items-center gap-2">
                         <Edit className="w-4 h-4" />
-                        Editor
+                        Capturista
                       </div>
                     </SelectItem>
-                    <SelectItem value="Lector">
+                    <SelectItem value="CONSULTA">
                       <div className="flex items-center gap-2">
                         <Eye className="w-4 h-4" />
-                        Lector
+                        Consulta
                       </div>
                     </SelectItem>
                   </SelectContent>
@@ -273,17 +338,19 @@ export default function UsersPage() {
                 <p className="text-xs text-muted-foreground">
                   <strong>Administrador:</strong> Acceso completo, gestión de usuarios
                   <br />
-                  <strong>Editor:</strong> Registrar y consultar información
+                  <strong>Capturista:</strong> Registrar y consultar información
                   <br />
-                  <strong>Lector:</strong> Solo consultar información
+                  <strong>Consulta:</strong> Solo consultar información
                 </p>
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isLoading}>
                 Cancelar
               </Button>
-              <Button onClick={handleAdd}>Registrar</Button>
+              <Button onClick={handleAdd} disabled={isLoading}>
+                {isLoading ? "Guardando..." : "Registrar"}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -296,7 +363,7 @@ export default function UsersPage() {
             <UserCog className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{users.length}</div>
+            <div className="text-2xl font-bold">{safeUsers.length}</div>
             <p className="text-xs text-muted-foreground mt-1">Registrados en el sistema</p>
           </CardContent>
         </Card>
@@ -307,18 +374,18 @@ export default function UsersPage() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{users.filter((u) => u.role === "Administrador").length}</div>
+            <div className="text-2xl font-bold">{safeUsers.filter((u) => u.role === "ADMIN").length}</div>
             <p className="text-xs text-muted-foreground mt-1">Con acceso completo</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Editores</CardTitle>
+            <CardTitle className="text-sm font-medium">Capturistas</CardTitle>
             <Edit className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{users.filter((u) => u.role === "Editor").length}</div>
+            <div className="text-2xl font-bold">{safeUsers.filter((u) => u.role === "CAPTURISTA").length}</div>
             <p className="text-xs text-muted-foreground mt-1">Pueden registrar datos</p>
           </CardContent>
         </Card>
@@ -347,9 +414,9 @@ export default function UsersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Todos">Todos los roles</SelectItem>
-                  <SelectItem value="Administrador">Administrador</SelectItem>
-                  <SelectItem value="Editor">Editor</SelectItem>
-                  <SelectItem value="Lector">Lector</SelectItem>
+                  <SelectItem value="ADMIN">Administrador</SelectItem>
+                  <SelectItem value="CAPTURISTA">Capturista</SelectItem>
+                  <SelectItem value="CONSULTA">Consulta</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -367,9 +434,9 @@ export default function UsersPage() {
               >
                 <div
                   className={`p-3 rounded-lg ${
-                    user.role === "Administrador"
+                    user.role === "ADMIN"
                       ? "bg-primary/10 text-primary"
-                      : user.role === "Editor"
+                      : user.role === "CAPTURISTA"
                         ? "bg-secondary/10 text-secondary"
                         : "bg-muted text-muted-foreground"
                   }`}
@@ -389,15 +456,25 @@ export default function UsersPage() {
                       </div>
                       <p className="text-sm text-muted-foreground">{user.email}</p>
                     </div>
-                    <Badge variant={getRoleBadgeVariant(user.role)}>{user.role}</Badge>
+                    <Badge variant={getRoleBadgeVariant(user.role)}>{getRoleLabel(user.role)}</Badge>
                   </div>
                   <div className="flex flex-wrap gap-2 mt-3">
-                    <Button variant="outline" size="sm" onClick={() => openEditDialog(user.id)}>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => openEditDialog(user.id)}
+                      disabled={isLoading}
+                    >
                       <Edit className="w-4 h-4 mr-1" />
                       Editar
                     </Button>
                     {currentUser?.id !== user.id && (
-                      <Button variant="outline" size="sm" onClick={() => handleDelete(user.id)}>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleDelete(user.id)}
+                        disabled={isLoading}
+                      >
                         <Trash2 className="w-4 h-4 mr-1" />
                         Eliminar
                       </Button>
@@ -436,12 +513,13 @@ export default function UsersPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Contraseña</Label>
+              <Label>Nueva Contraseña (dejar en blanco para no cambiar)</Label>
               <div className="relative">
                 <Input
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  placeholder="Nueva contraseña (opcional)"
                 />
                 <Button
                   type="button"
@@ -464,22 +542,22 @@ export default function UsersPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Administrador">
+                  <SelectItem value="ADMIN">
                     <div className="flex items-center gap-2">
                       <Shield className="w-4 h-4" />
                       Administrador
                     </div>
                   </SelectItem>
-                  <SelectItem value="Editor">
+                  <SelectItem value="CAPTURISTA">
                     <div className="flex items-center gap-2">
                       <Edit className="w-4 h-4" />
-                      Editor
+                      Capturista
                     </div>
                   </SelectItem>
-                  <SelectItem value="Lector">
+                  <SelectItem value="CONSULTA">
                     <div className="flex items-center gap-2">
                       <Eye className="w-4 h-4" />
-                      Lector
+                      Consulta
                     </div>
                   </SelectItem>
                 </SelectContent>
@@ -487,10 +565,19 @@ export default function UsersPage() {
             </div>
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setIsEditDialogOpen(false)
+                setSelectedUser(null)
+              }}
+              disabled={isLoading}
+            >
               Cancelar
             </Button>
-            <Button onClick={handleEdit}>Guardar Cambios</Button>
+            <Button onClick={handleEdit} disabled={isLoading}>
+              {isLoading ? "Guardando..." : "Guardar Cambios"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
