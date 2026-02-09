@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from "react"
-import { useAuth } from "@/lib/context/auth-context"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,7 +10,7 @@ import { Shield, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function LoginPage() {
-  const { login } = useAuth()
+  const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -37,7 +37,10 @@ export default function LoginPage() {
         return
       }
 
-      login(data, data.token)
+      sessionStorage.setItem("currentUser", JSON.stringify(data))
+      sessionStorage.setItem("jwtToken", data.token)
+
+      router.push("/dashboard")
 
     } catch (err) {
       console.error(err)

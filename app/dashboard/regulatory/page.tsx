@@ -50,11 +50,13 @@ export default function RegulatoryPage() {
     return entity?.name || ""
   }
 
-  const getFileName = (fileUrl: string | null) => {
-    if (!fileUrl) return null
-    const parts = fileUrl.split('/')
-    return parts[parts.length - 1]
-  }
+const getFileName = (fileUrl: string | null) => {
+  if (!fileUrl) return null
+  const parts = fileUrl.split('/')
+  const fullFileName = parts[parts.length - 1]
+  const match = fullFileName.match(/^\d+-(.+)$/)
+  return match ? match[1] : fullFileName
+}
 
   const openEdit = (doc: any) => {
     setEditing(doc)
@@ -197,8 +199,8 @@ export default function RegulatoryPage() {
                   <h3 className="font-semibold">{doc.type}</h3>
                   <p className="text-sm text-muted-foreground mt-1">{getEntityName(doc.entityId)}</p>
                   
-                  <p className="text-sm mt-2">
-                    Fecha: {doc.issueDate || "—"}
+                 <p className="text-sm mt-2">
+  Fecha: {doc.issueDate ? new Date(doc.issueDate).toISOString().split('T')[0] : "—"}
                     {doc.file && (
                       <span className="ml-120">Archivo: {getFileName(doc.file)}</span>
                     )}

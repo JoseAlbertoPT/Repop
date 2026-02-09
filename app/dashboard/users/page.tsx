@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils"
 
 import { useState, useEffect } from "react"
 import type { User, UserRole } from "@/lib/types"
+import { useAuth } from "@/lib/context/auth-context"  
 import { useApp } from "@/lib/context/app-context"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -27,7 +28,8 @@ export default function UsersPage() {
   const { users, addUser, updateUser, deleteUser } = useApp()
   const { toast } = useToast()
   const router = useRouter()
-  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const { currentUser } = useAuth()  
+  // const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterRole, setFilterRole] = useState<string>("Todos")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -44,21 +46,15 @@ export default function UsersPage() {
   })
 
   useEffect(() => {
-    const userStr = sessionStorage.getItem("currentUser")
-    if (userStr) {
-      const user = JSON.parse(userStr)
-      setCurrentUser(user)
-
-      if (user.role !== "ADMIN") {
-        toast({
-          title: "Acceso Denegado",
-          description: "Solo los administradores pueden gestionar usuarios",
-          variant: "destructive",
-        })
-        router.push("/dashboard")
-      }
+    if (currentUser && currentUser.role !== "ADMIN") {
+      toast({
+        title: "Acceso Denegado",
+        description: "Solo los administradores pueden gestionar usuarios",
+        variant: "destructive",
+      })
+      router.push("/dashboard")
     }
-  }, [router, toast])
+  }, [currentUser, router, toast])
 
   const safeUsers = users || []
 
@@ -94,7 +90,7 @@ export default function UsersPage() {
       await addUser(formData)
       toast({
         title: "Usuario registrado",
-        description: `El usuario ${formData.name} ha sido creado correctamente`,
+        description: 'El usuario ${formData.name} ha sido creado correctamente ',
       })
       setIsAddDialogOpen(false)
       setFormData({
@@ -164,7 +160,7 @@ export default function UsersPage() {
       return
     }
 
-    if (confirm(`¿Está seguro de eliminar al usuario ${userToDelete?.name}?`)) {
+    if (confirm('¿Está seguro de eliminar al usuario ${userToDelete?.name}?')){
       setIsLoading(true)
       try {
         await deleteUser(id)
@@ -489,7 +485,7 @@ export default function UsersPage() {
         </CardContent>
       </Card>
 
-      {}
+      {/* Modal Editar */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>

@@ -12,56 +12,73 @@ interface AuthContextType {
   isLoading: boolean
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+// Context seguro (no undefined)
+const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+
   const router = useRouter()
   const pathname = usePathname()
 
-  // Solo para migración inicial - recuperar datos de sessionStorage UNA VEZ
   useEffect(() => {
-    const storedUser = sessionStorage.getItem("currentUser")
-    const storedToken = sessionStorage.getItem("jwtToken")
-    
+    if (typeof window === "undefined") return
+
+    const storedUser = localStorage.getItem("currentUser")
+    const storedToken = localStorage.getItem("jwtToken")
+
     if (storedUser && storedToken) {
       try {
         setCurrentUser(JSON.parse(storedUser))
         setToken(storedToken)
-        // Limpiar sessionStorage después de migrar
-        sessionStorage.removeItem("currentUser")
-        sessionStorage.removeItem("jwtToken")
       } catch (error) {
         console.error("Error parsing stored user:", error)
+        localStorage.removeItem("currentUser")
+        localStorage.removeItem("jwtToken")
       }
     }
-    
+
     setIsLoading(false)
   }, [])
 
-  // Proteger rutas automáticamente
   useEffect(() => {
     if (!isLoading && !currentUser && pathname?.startsWith("/dashboard")) {
-      router.push("/")
+      router.push("/login")
     }
   }, [currentUser, isLoading, pathname, router])
 
   const login = (user: User, authToken: string) => {
     setCurrentUser(user)
     setToken(authToken)
+
+    localStorage.setItem("currentUser", JSON.stringify(user))
+    localStorage.setItem("jwtToken", authToken)
+
     router.push("/dashboard")
   }
 
   const logout = () => {
     setCurrentUser(null)
     setToken(null)
-    router.push("/")
+
+    localStorage.removeItem("currentUser")
+    localStorage.removeItem("jwtToken")
+
+    router.push("/login")
   }
 
   return (
-    <AuthContext.Provider value={{ currentUser, token, login, logout, isLoading }}>
+    <AuthContext.Provider
+      value={{
+        currentUser,
+        token,
+        login,
+        logout,
+        isLoading,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
@@ -69,8 +86,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error("useAuth debe ser usado dentro de un AuthProvider")
+
+  if (!context) {
+    return {
+      currentUser: null,
+      token: null,
+      login: () => {},
+      logout: () => {},
+      isLoading: true,
+    }
   }
+
   return context
 }

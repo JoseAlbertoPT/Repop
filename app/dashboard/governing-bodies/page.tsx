@@ -757,7 +757,7 @@ export default function GoverningBodiesPage() {
         <CardContent>
           <div className="space-y-4">
             {filteredBodies.map((body) => {
-              // Usar entityName si viene de la API, sino buscar en localEntities
+              // Usar entityName si viene de la API
               const entityName = body.entityName || localEntities.find((e) => Number(e.id) === Number(body.entityId))?.name
               
               return (

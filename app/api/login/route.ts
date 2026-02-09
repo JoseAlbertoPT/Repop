@@ -16,7 +16,7 @@ export async function POST(req: Request) {
       );
     }
 
-    //  Buscar usuario activo por correo
+    // Buscar usuario activo por correo
     const [rows] = await db.query(
       "SELECT * FROM usuarios WHERE correo = ? AND activo = TRUE",
       [email]
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
     const user = usuarios[0];
 
-    //  Comparar contraseña
+    // Comparar contraseña
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
       return NextResponse.json(
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       );
     }
 
-    //  Obtener rol REAL desde la BD
+    // Obtener rol REAL desde la BD
     const [rolesRows] = await db.query(
       "SELECT nombre FROM roles WHERE id = ?",
       [user.rol_id]
@@ -51,12 +51,9 @@ export async function POST(req: Request) {
     const roles = rolesRows as any[];
     const rolBD = roles[0]?.nombre || "CONSULTA";
 
-    //  IMPORTANTE: 
-    // Debe coincidir EXACTAMENTE con el frontend:
-    // "ADMIN" | "CAPTURISTA" | "CONSULTA"
     const rolFrontend = rolBD;
 
-    //  Payload del token y de la sesión
+    // Payload del token y de la sesión
     const payload = {
       id: user.id,
       name: user.nombre_completo,
@@ -64,7 +61,7 @@ export async function POST(req: Request) {
       role: rolFrontend,
     };
 
-    //  Generar JWT válido por 1 hora
+    // Generar JWT válido por 1 hora
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "1h" });
 
     return NextResponse.json({
