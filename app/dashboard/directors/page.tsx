@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Plus, Search, Edit, Trash2, UserCog, Eye } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
-// ✅ CORREGIDO: endDate eliminado
+//   endDate eliminado
 interface Director {
   id: number
   entityId: number
@@ -417,7 +417,7 @@ export default function DirectorsPage() {
         )}
       </div>
 
-      {/* ✅ CORREGIDO: Modal Ver sin Fecha de Conclusión */}
+      {/*Modal Ver sin Fecha de Conclusión */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -595,7 +595,7 @@ export default function DirectorsPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {/* ✅ CORREGIDO: Badge siempre "Vigente", endDate eliminado */}
+            {/* Badge siempre "Vigente", endDate eliminado */}
             {filteredDirectors.map((director) => {
               const entity = entities.find((e) => e.id === director.entityId)
 

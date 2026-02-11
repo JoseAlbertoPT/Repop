@@ -19,7 +19,7 @@ export async function GET(req: Request) {
 
     console.log(" Generando reporte:", reportType)
 
-    // ── ENTES ──────────────────────────────────────────
+    //  ENTES 
     const [entes]: any = await db.query(`
       SELECT * FROM entes
       ORDER BY nombre_oficial ASC
@@ -36,13 +36,13 @@ export async function GET(req: Request) {
       id: e.id,
       folio: e.folio_inscripcion || e.id?.toString() || 'N/A',
       name: e.nombre_oficial || 'Sin nombre',
-      type: normalizeTipoEnte(e.tipo_ente),   // ✅ Normalizar aquí
+      type: normalizeTipoEnte(e.tipo_ente),   
       status: e.estatus || 'Activo',
       creationDate: e.created_at || null,
       createdAt: e.created_at || null
     }))
 
-    // ── INTEGRANTES ────────────────────────────────────
+    // INTEGRANTES 
     const [integrantes]: any = await db.query(`
       SELECT io.*, e.nombre_oficial AS entityName
       FROM integrantes_organo io
@@ -63,7 +63,7 @@ export async function GET(req: Request) {
       entityName: i.entityName
     }))
 
-    // ── REPRESENTANTES ─────────────────────────────────
+    // REPRESENTANTES 
     const [representantes]: any = await db.query(`
       SELECT r.*, e.nombre_oficial AS entityName
       FROM representantes r
@@ -84,7 +84,7 @@ export async function GET(req: Request) {
       entityName: r.entityName
     }))
 
-    // ── PODERES ────────────────────────────────────────
+    //  PODERES
     const [poderes]: any = await db.query(`
       SELECT p.*, e.nombre_oficial AS entityName
       FROM poderes p
@@ -115,7 +115,7 @@ export async function GET(req: Request) {
       entityName: p.entityName
     }))
 
-    // ── MARCO NORMATIVO ────────────────────────────────
+    // MARCO NORMATIVO 
     const [marcoNormativo]: any = await db.query(`
       SELECT mn.*, e.nombre_oficial AS entityName
       FROM marco_normativo mn
@@ -135,7 +135,6 @@ export async function GET(req: Request) {
       entityName: m.entityName
     }))
 
-    // ── RESPUESTA ──────────────────────────────────────
     let response: any = {}
 
     switch (reportType) {
@@ -236,7 +235,7 @@ export async function POST(req: Request) {
       id: e.id,
       folio: e.folio_inscripcion || e.id?.toString() || 'N/A',
       name: e.nombre_oficial || 'Sin nombre',
-      type: normalizeTipoEnte(e.tipo_ente),   //  Normalizar aquí también
+      type: normalizeTipoEnte(e.tipo_ente),   
       status: e.estatus || 'Activo',
       creationDate: e.created_at || null,
       createdAt: e.created_at || null

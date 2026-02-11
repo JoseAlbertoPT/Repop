@@ -92,8 +92,6 @@ export default function GoverningBodiesPage() {
     try {
       const res = await fetch("/api/entes")
       const data = await res.json()
-      console.log("Entes cargados desde API:", data)
-      console.log("Primer ente:", data[0])
       setLocalEntities(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error("Error loading entities:", error)
@@ -111,8 +109,6 @@ export default function GoverningBodiesPage() {
     try {
       const res = await fetch("/api/integrantes-organo")
       const data = await res.json()
-      console.log("Integrantes cargados:", data)
-      console.log("Primer integrante:", data[0])
       setLocalGoverningBodies(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error("Error loading governing bodies:", error)
@@ -131,21 +127,6 @@ export default function GoverningBodiesPage() {
     loadEntities()
     loadGoverningBodies()
   }, [])
-
-  // Debug: ver los datos cargados
-  useEffect(() => {
-    console.log("=== DEBUG DATOS ===")
-    console.log("localEntities:", localEntities)
-    console.log("localGoverningBodies:", localGoverningBodies)
-    if (localGoverningBodies.length > 0 && localEntities.length > 0) {
-      const firstBody = localGoverningBodies[0]
-      console.log("Primer integrante:", firstBody)
-      console.log("Su entityId:", firstBody.entityId, "tipo:", typeof firstBody.entityId)
-      const foundEntity = localEntities.find((e) => Number(e.id) === Number(firstBody.entityId))
-      console.log("Ente encontrado?:", foundEntity)
-      console.log("Todos los IDs de entes:", localEntities.map(e => ({ id: e.id, tipo: typeof e.id, name: e.name })))
-    }
-  }, [localEntities, localGoverningBodies])
 
   // Usar localGoverningBodies y localEntities en lugar del contexto
   const filteredBodies = localGoverningBodies.filter((body) => {
@@ -315,6 +296,7 @@ export default function GoverningBodiesPage() {
     }
   }
 
+  // Validación correcta de permisos
   const canEdit = currentUser?.role === "ADMIN" || currentUser?.role === "CAPTURISTA"
   const isAdmin = currentUser?.role === "ADMIN"
 
@@ -796,15 +778,22 @@ export default function GoverningBodiesPage() {
                         <strong>Nombramiento:</strong> {formatDate(body.appointmentDate)}
                       </p>
                     </div>
+                    
+                    {/*  Botones con validación correcta */}
                     <div className="flex gap-1">
+                      {/* Todos pueden ver */}
                       <Button variant="ghost" size="sm" onClick={() => openViewDialog(body.id)} title="Ver detalles">
                         <Eye className="w-4 h-4" />
                       </Button>
-                      {currentUser?.role !== "Lector" && (
+                      
+                      {/* Solo ADMIN y CAPTURISTA pueden editar */}
+                      {canEdit && (
                         <Button variant="ghost" size="sm" onClick={() => openEditDialog(body.id)} title="Editar">
                           <Edit className="w-4 h-4" />
                         </Button>
                       )}
+                      
+                      {/* Solo ADMIN puede eliminar */}
                       {isAdmin && (
                         <Button variant="ghost" size="sm" onClick={() => handleDelete(body.id)} title="Eliminar">
                           <Trash2 className="w-4 h-4" />

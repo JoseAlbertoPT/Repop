@@ -11,6 +11,7 @@ import { FileText, Plus, Search, Pencil, Trash2, Download } from "lucide-react"
 export default function RegulatoryPage() {
   const [entities, setEntities] = useState<any[]>([])
   const [docs, setDocs] = useState<any[]>([])
+  const [currentUser, setCurrentUser] = useState<any>(null)
 
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
@@ -24,6 +25,19 @@ export default function RegulatoryPage() {
     notes: "",
     file: null as File | null
   })
+
+  // NUEVO: Obtener usuario actual del sessionStorage
+  useEffect(() => {
+    const userStr = sessionStorage.getItem("currentUser")
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr)
+        setCurrentUser(user)
+      } catch (error) {
+        console.error("Error parsing user:", error)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     fetch("/api/entes")
@@ -53,7 +67,22 @@ export default function RegulatoryPage() {
   const getFileName = (fileUrl: string | null) => {
     if (!fileUrl) return null
     const parts = fileUrl.split('/')
-    return parts[parts.length - 1]
+    const fullFileName = parts[parts.length - 1]
+    // Remove timestamp prefix (e.g., "1770778990344-ewe.pdf" -> "ewe.pdf")
+    const cleanFileName = fullFileName.replace(/^\d+-/, '')
+    return cleanFileName
+  }
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "—"
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) return "—"
+    
+    const day = String(date.getDate()).padStart(2, '0')
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const year = date.getFullYear()
+    
+    return `${day}/${month}/${year}`
   }
 
   const openEdit = (doc: any) => {
@@ -139,8 +168,24 @@ export default function RegulatoryPage() {
   }
 
   const deleteDoc = async (id: number) => {
+    //  VALIDACIÓN ADICIONAL: verificar si es ADMIN antes de eliminar
+    if (currentUser?.role !== "ADMIN") {
+      alert("No tienes permisos para eliminar documentos")
+      return
+    }
+    
     await fetch(`/api/marco-normativo?id=${id}`, { method: "DELETE" })
     location.reload()
+  }
+
+  //  NUEVA FUNCIÓN: Verificar si el usuario puede eliminar
+  const canDelete = () => {
+    return currentUser?.role === "ADMIN"
+  }
+
+  //  NUEVA FUNCIÓN: Verificar si el usuario puede editar
+  const canEdit = () => {
+    return currentUser?.role === "ADMIN" || currentUser?.role === "CAPTURISTA"
   }
 
   return (
@@ -150,13 +195,16 @@ export default function RegulatoryPage() {
           <h1 className="text-3xl font-bold">Marco Normativo</h1>
           <p className="text-muted-foreground">Documentos rectores y contractuales</p>
         </div>
-        <Button onClick={() => { 
-          setEditing(null); 
-          setForm({ entityId: "", type: "", issueDate: "", notes: "", file: null }); 
-          setOpen(true) 
-        }}>
-          <Plus className="w-4 h-4 mr-2" /> Nuevo Documento
-        </Button>
+        {/* SOLO MOSTRAR BOTÓN NUEVO DOCUMENTO SI PUEDE EDITAR */}
+        {canEdit() && (
+          <Button onClick={() => { 
+            setEditing(null); 
+            setForm({ entityId: "", type: "", issueDate: "", notes: "", file: null }); 
+            setOpen(true) 
+          }}>
+            <Plus className="w-4 h-4 mr-2" /> Nuevo Documento
+          </Button>
+        )}
       </div>
 
       <Card className="p-6 space-y-6">
@@ -198,7 +246,7 @@ export default function RegulatoryPage() {
                   <p className="text-sm text-muted-foreground mt-1">{getEntityName(doc.entityId)}</p>
                   
                   <p className="text-sm mt-2">
-                    Fecha: {doc.issueDate || "—"}
+                    Fecha: {formatDate(doc.issueDate)}
                     {doc.file && (
                       <span className="ml-120">Archivo: {getFileName(doc.file)}</span>
                     )}
@@ -210,13 +258,22 @@ export default function RegulatoryPage() {
                     </p>
                   )}
 
+                  {/* SECCIÓN MODIFICADA: Botones con validación de permisos */}
                   <div className="flex gap-2 mt-3">
-                    <Button size="sm" variant="outline" onClick={() => openEdit(doc)}>
-                      <Pencil className="w-4 h-4 mr-1" /> Editar
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => deleteDoc(doc.id)}>
-                      <Trash2 className="w-4 h-4 mr-1" /> Eliminar
-                    </Button>
+                    {/* SOLO MOSTRAR BOTÓN EDITAR SI PUEDE EDITAR */}
+                    {canEdit() && (
+                      <Button size="sm" variant="outline" onClick={() => openEdit(doc)}>
+                        <Pencil className="w-4 h-4 mr-1" /> Editar
+                      </Button>
+                    )}
+                    
+                    {/* SOLO MOSTRAR BOTÓN ELIMINAR SI ES ADMIN */}
+                    {canDelete() && (
+                      <Button size="sm" variant="outline" onClick={() => deleteDoc(doc.id)}>
+                        <Trash2 className="w-4 h-4 mr-1" /> Eliminar
+                      </Button>
+                    )}
+                    
                     {doc.file && (
                       <a href={doc.file} target="_blank">
                         <Button size="sm" variant="outline">

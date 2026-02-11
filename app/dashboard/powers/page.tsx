@@ -272,7 +272,7 @@ export default function PowersPage() {
       })
 
       const responseData = await res.json()
-      console.log("✅ Respuesta del servidor:", responseData)
+      console.log("Respuesta del servidor:", responseData)
 
       if (res.ok) {
         toast({
@@ -291,7 +291,7 @@ export default function PowersPage() {
         })
       }
     } catch (error) {
-      console.error("❌ Error saving power:", error)
+      console.error(" Error saving power:", error)
       toast({
         title: "Error de conexión",
         description: "No se pudo conectar con el servidor. Verifique su conexión.",
