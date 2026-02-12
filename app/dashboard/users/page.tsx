@@ -23,6 +23,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Search, Edit, Trash2, UserCog, Shield, Eye, EyeOff } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
+// Importar las funciones de SweetAlert2
+import { 
+  confirmDelete, 
+  showSuccess, 
+  showError, 
+  showLoading, 
+  closeLoading,
+  confirmUpdate
+} from '@/lib/swalUtils'
+
 export default function UsersPage() {
   const { users, addUser, updateUser, deleteUser } = useApp()
   const { toast } = useToast()
@@ -72,116 +82,152 @@ export default function UsersPage() {
     return matchesSearch && matchesRole
   })
 
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      email: "",
+      password: "",
+      role: "CAPTURISTA",
+    })
+    setShowPassword(false)
+  }
+
+  // Función handleAdd con SweetAlert2
   const handleAdd = async () => {
+    // Validación
     if (!formData.name || !formData.email || !formData.password) {
-      toast({
-        title: "Error",
-        description: "Por favor complete todos los campos",
-        variant: "destructive",
-      })
+      showError("Campos requeridos", "Por favor complete todos los campos")
+      return
+    }
+
+    // Validar email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(formData.email)) {
+      showError("Email inválido", "Por favor ingrese un correo electrónico válido")
       return
     }
 
     // Check if email already exists
     if (safeUsers.some((u) => u.email === formData.email)) {
-      toast({
-        title: "Error",
-        description: "El correo electrónico ya está registrado",
-        variant: "destructive",
-      })
+      showError("Email duplicado", "El correo electrónico ya está registrado")
       return
     }
 
+    // Mostrar loading
+    showLoading("Creando usuario...", "Por favor espere")
     setIsLoading(true)
+
     try {
       await addUser(formData)
-      toast({
-        title: "Usuario registrado",
-        description: `El usuario ${formData.name} ha sido creado correctamente`,
-      })
+
+      closeLoading()
+
+      // Cerrar modal y limpiar ANTES de mostrar alerta
       setIsAddDialogOpen(false)
-      setFormData({
-        name: "",
-        email: "",
-        password: "",
-        role: "CAPTURISTA",
-      })
+      resetForm()
+
+      await showSuccess("¡Usuario registrado!", `${formData.name} ha sido creado correctamente`)
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo crear el usuario. Por favor intente nuevamente.",
-        variant: "destructive",
-      })
+      closeLoading()
+      console.error("Error adding user:", error)
+      showError("Error al crear usuario", "No se pudo crear el usuario. Intente nuevamente.")
     } finally {
       setIsLoading(false)
     }
   }
 
+  // Función handleEdit con SweetAlert2
   const handleEdit = async () => {
     if (selectedUser === null) return
 
+    // Validación
     if (!formData.name || !formData.email) {
-      toast({
-        title: "Error",
-        description: "Por favor complete todos los campos requeridos",
-        variant: "destructive",
-      })
+      showError("Campos requeridos", "Por favor complete los campos obligatorios")
       return
     }
 
+    // Validar email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(formData.email)) {
+      showError("Email inválido", "Por favor ingrese un correo electrónico válido")
+      return
+    }
+
+    // Guardar datos temporalmente antes de cerrar el modal
+    const tempFormData = { ...formData }
+    const tempSelectedUser = selectedUser
+    const userName = formData.name
+
+    // Cerrar el modal ANTES de mostrar la confirmación
+    setIsEditDialogOpen(false)
+    
+    // Pequeño delay para que el modal se cierre completamente
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // Pedir confirmación
+    const result = await confirmUpdate(`el usuario "${userName}"`)
+    
+    if (!result.isConfirmed) {
+      // Usuario canceló, volver a abrir el modal
+      setIsEditDialogOpen(true)
+      return
+    }
+
+    // Usuario confirmó, continuar con el guardado
+    showLoading("Actualizando usuario...", "Por favor espere")
     setIsLoading(true)
+
     try {
-      await updateUser(selectedUser, formData)
-      toast({
-        title: "Actualizado",
-        description: "El usuario ha sido actualizado correctamente",
-      })
-      setIsEditDialogOpen(false)
+      await updateUser(tempSelectedUser, tempFormData)
+
+      closeLoading()
+
+      // Limpiar estados
       setSelectedUser(null)
-      setFormData({
-        name: "",
-        email: "",
-        password: "",
-        role: "CAPTURISTA",
-      })
+      resetForm()
+
+      await showSuccess("¡Actualizado!", "Los cambios se guardaron correctamente")
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el usuario. Por favor intente nuevamente.",
-        variant: "destructive",
-      })
+      closeLoading()
+      console.error("Error updating user:", error)
+      showError("Error al actualizar", "No se pudieron guardar los cambios. Intente nuevamente.")
+      // Volver a abrir el modal si hay error
+      setIsEditDialogOpen(true)
     } finally {
       setIsLoading(false)
     }
   }
 
+  // Función handleDelete con SweetAlert2
   const handleDelete = async (id: number) => {
     const userToDelete = safeUsers.find((u) => u.id === id)
 
     // Prevent deleting yourself
     if (currentUser?.id === id) {
-      toast({
-        title: "Error",
-        description: "No puedes eliminar tu propia cuenta",
-        variant: "destructive",
-      })
+      showError("Operación no permitida", "No puedes eliminar tu propia cuenta")
       return
     }
 
-    if (confirm(`¿Está seguro de eliminar al usuario ${userToDelete?.name}?`)) {
+    if (!userToDelete) return
+
+    // Pedir confirmación
+    const result = await confirmDelete(`el usuario "${userToDelete.name}"`)
+    
+    if (result.isConfirmed) {
+      // Mostrar loading
+      showLoading("Eliminando usuario...", "Por favor espere")
       setIsLoading(true)
+
       try {
         await deleteUser(id)
-        toast({
-          title: "Eliminado",
-          description: "El usuario ha sido eliminado",
-        })
+
+        closeLoading()
+
+        await showSuccess("¡Eliminado!", `${userToDelete.name} ha sido eliminado correctamente`)
       } catch (error) {
-        toast({
-          title: "Error",
-          description: "No se pudo eliminar el usuario. Por favor intente nuevamente.",
-          variant: "destructive",
-        })
+        closeLoading()
+        console.error("Error deleting user:", error)
+        showError("Error al eliminar", "No se pudo eliminar el usuario. Intente nuevamente.")
       } finally {
         setIsLoading(false)
       }
@@ -198,6 +244,7 @@ export default function UsersPage() {
         role: user.role,
       })
       setSelectedUser(id)
+      setShowPassword(false)
       setIsEditDialogOpen(true)
     }
   }
@@ -252,7 +299,10 @@ export default function UsersPage() {
           <h1 className="text-3xl font-bold text-balance">Gestión de Usuarios</h1>
           <p className="text-muted-foreground mt-2">Administración de cuentas y permisos del sistema</p>
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+          setIsAddDialogOpen(open)
+          if (!open) resetForm()
+        }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="w-4 h-4 mr-2" />
@@ -494,7 +544,13 @@ export default function UsersPage() {
       </Card>
 
       {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+        setIsEditDialogOpen(open)
+        if (!open) {
+          setSelectedUser(null)
+          resetForm()
+        }
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Editar Usuario</DialogTitle>

@@ -20,6 +20,16 @@ import { Plus, Search, Edit, Trash2, Award, Eye, File, AlertCircle } from "lucid
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
+// Importar las funciones de SweetAlert2
+import { 
+  confirmDelete, 
+  showSuccess, 
+  showError, 
+  showLoading, 
+  closeLoading,
+  confirmUpdate
+} from '@/lib/swalUtils'
+
 interface Power {
   id: number
   entityId: number
@@ -208,11 +218,7 @@ export default function PowersPage() {
     const file = e.target.files?.[0]
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        toast({
-          title: "Archivo muy grande",
-          description: "El archivo no debe superar los 5MB",
-          variant: "destructive",
-        })
+        showError("Archivo muy grande", "El archivo no debe superar los 5MB")
         return
       }
       setUploadedFile(file)
@@ -220,19 +226,18 @@ export default function PowersPage() {
     }
   }
 
+  // Función handleAdd con SweetAlert2
   const handleAdd = async () => {
     if (!validateForm()) {
-      toast({
-        title: "Error de validación",
-        description: "Por favor corrija los errores antes de continuar",
-        variant: "destructive",
-      })
+      showError("Error de validación", "Por favor corrija los errores antes de continuar")
       return
     }
 
     const validAttorneys = formData.attorneys.filter((a) => a.trim() !== "")
     
+    showLoading("Guardando poder...", "Por favor espere")
     setIsLoading(true)
+
     try {
       let fileUrl = null
       if (uploadedFile) {
@@ -244,12 +249,9 @@ export default function PowersPage() {
             reader.readAsDataURL(uploadedFile)
           })
         } catch (error) {
+          closeLoading()
           console.error("Error reading file:", error)
-          toast({
-            title: "Error",
-            description: "No se pudo procesar el archivo",
-            variant: "destructive",
-          })
+          showError("Error al procesar archivo", "No se pudo procesar el archivo adjunto")
           return
         }
       }
@@ -274,67 +276,84 @@ export default function PowersPage() {
       const responseData = await res.json()
       console.log("Respuesta del servidor:", responseData)
 
+      closeLoading()
+
       if (res.ok) {
-        toast({
-          title: "✓ Poder registrado",
-          description: "El poder ha sido registrado correctamente",
-        })
+        // Cerrar modal y limpiar ANTES de mostrar alerta
         setIsAddDialogOpen(false)
         resetForm()
+
+        await showSuccess("¡Poder registrado!", "El poder ha sido registrado correctamente")
+        
         await loadPowers()
       } else {
         console.error("Error response:", responseData)
-        toast({
-          title: "Error al guardar",
-          description: responseData.error || "Error desconocido al guardar el poder",
-          variant: "destructive",
-        })
+        showError("Error al guardar", responseData.error || "Error desconocido al guardar el poder")
       }
     } catch (error) {
-      console.error(" Error saving power:", error)
-      toast({
-        title: "Error de conexión",
-        description: "No se pudo conectar con el servidor. Verifique su conexión.",
-        variant: "destructive",
-      })
+      closeLoading()
+      console.error("Error saving power:", error)
+      showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
     } finally {
       setIsLoading(false)
     }
   }
 
+  // Función handleEdit con SweetAlert2
   const handleEdit = async () => {
     if (!selectedPower) return
 
     if (!validateForm()) {
-      toast({
-        title: "Error de validación",
-        description: "Por favor corrija los errores antes de continuar",
-        variant: "destructive",
-      })
+      showError("Error de validación", "Por favor corrija los errores antes de continuar")
       return
     }
 
     const validAttorneys = formData.attorneys.filter((a) => a.trim() !== "")
     
+    // Guardar datos temporalmente antes de cerrar el modal
+    const tempPowerId = selectedPower.id
+    const tempPowerType = formData.powerType
+    const tempUploadedFile = uploadedFile
+    const tempFormData = { ...formData }
+    const tempFileUrl = selectedPower.fileUrl
+
+    // Cerrar el modal ANTES de mostrar la confirmación
+    setIsEditDialogOpen(false)
+    
+    // Pequeño delay para que el modal se cierre completamente
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // Pedir confirmación
+    const result = await confirmUpdate(`el poder "${tempPowerType}"`)
+    
+    if (!result.isConfirmed) {
+      // Usuario canceló, volver a abrir el modal
+      setIsEditDialogOpen(true)
+      return
+    }
+
+    // Usuario confirmó, continuar con el guardado
+    showLoading("Actualizando poder...", "Por favor espere")
     setIsLoading(true)
+
     try {
-      let fileUrl = selectedPower.fileUrl
-      if (uploadedFile) {
+      let fileUrl = tempFileUrl
+      if (tempUploadedFile) {
         const reader = new FileReader()
         fileUrl = await new Promise<string>((resolve, reject) => {
           reader.onload = () => resolve(reader.result as string)
           reader.onerror = () => reject(new Error("Error al leer el archivo"))
-          reader.readAsDataURL(uploadedFile)
+          reader.readAsDataURL(tempUploadedFile)
         })
       }
 
       const payload = {
-        id: selectedPower.id,
-        entityId: parseInt(formData.entityId),
-        powerType: formData.powerType.trim(),
+        id: tempPowerId,
+        entityId: parseInt(tempFormData.entityId),
+        powerType: tempFormData.powerType.trim(),
         attorneys: validAttorneys,  
-        grantDate: formData.grantDate || null,
-        document: formData.document.trim() || null,
+        grantDate: tempFormData.grantDate || null,
+        document: tempFormData.document.trim() || null,
         fileUrl: fileUrl,
       }
 
@@ -346,73 +365,69 @@ export default function PowersPage() {
 
       const responseData = await res.json()
 
+      closeLoading()
+
       if (res.ok) {
-        toast({
-          title: "✓ Actualizado",
-          description: "El registro ha sido actualizado correctamente",
-        })
-        setIsEditDialogOpen(false)
+        // Limpiar estados
         setSelectedPower(null)
         resetForm()
+
+        await showSuccess("¡Actualizado!", "Los cambios se guardaron correctamente")
+        
         await loadPowers()
       } else {
-        toast({
-          title: "Error",
-          description: responseData.error || "Error al actualizar",
-          variant: "destructive",
-        })
+        showError("Error al actualizar", responseData.error || "No se pudieron guardar los cambios")
+        // Volver a abrir el modal si hay error
+        setIsEditDialogOpen(true)
       }
     } catch (error) {
+      closeLoading()
       console.error("Error updating power:", error)
-      toast({
-        title: "Error",
-        description: "Error de conexión al actualizar",
-        variant: "destructive",
-      })
+      showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
+      // Volver a abrir el modal si hay error
+      setIsEditDialogOpen(true)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleDelete = async (id: number) => {
+  // Función handleDelete con SweetAlert2
+  const handleDelete = async (id: number, powerType: string) => {
+    // Verificar permisos
     if (currentUser?.role !== "ADMIN") {
-      toast({
-        title: "Sin permisos",
-        description: "Solo los administradores pueden eliminar registros",
-        variant: "destructive",
-      })
+      showError("Sin permisos", "Solo los administradores pueden eliminar registros")
       return
     }
 
-    setIsLoading(true)
-    try {
-      const res = await fetch(`/api/poderes?id=${id}`, {
-        method: "DELETE",
-      })
+    // Pedir confirmación
+    const result = await confirmDelete(`el poder "${powerType}"`)
+    
+    if (result.isConfirmed) {
+      // Mostrar loading
+      showLoading("Eliminando poder...", "Por favor espere")
+      setIsLoading(true)
 
-      if (res.ok) {
-        toast({
-          title: "✓ Eliminado",
-          description: "El registro ha sido eliminado",
+      try {
+        const res = await fetch(`/api/poderes?id=${id}`, {
+          method: "DELETE",
         })
-        await loadPowers()
-      } else {
-        const error = await res.json()
-        toast({
-          title: "Error",
-          description: error.error || "Error al eliminar",
-          variant: "destructive",
-        })
+
+        closeLoading()
+
+        if (res.ok) {
+          await showSuccess("¡Eliminado!", `${powerType} ha sido eliminado correctamente`)
+          await loadPowers()
+        } else {
+          const error = await res.json()
+          showError("Error al eliminar", error.error || "No se pudo eliminar el poder")
+        }
+      } catch (error) {
+        closeLoading()
+        console.error("Error deleting power:", error)
+        showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
+      } finally {
+        setIsLoading(false)
       }
-    } catch (error) {
-      console.error("Error deleting power:", error)
-      toast({
-        title: "Error",
-        description: "Error de conexión al eliminar",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoading(false)
     }
   }
 
@@ -448,11 +463,7 @@ export default function PowersPage() {
       link.click()
       document.body.removeChild(link)
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo descargar el archivo",
-        variant: "destructive",
-      })
+      showError("Error al descargar", "No se pudo descargar el archivo")
     }
   }
 
@@ -790,7 +801,7 @@ export default function PowersPage() {
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isLoading}>
               Cancelar
             </Button>
             <Button onClick={handleEdit} disabled={isLoading}>
@@ -896,7 +907,7 @@ export default function PowersPage() {
                         <Button 
                           variant="outline" 
                           size="sm" 
-                          onClick={() => handleDelete(power.id)}
+                          onClick={() => handleDelete(power.id, power.powerType)}
                           className="bg-background rounded-lg"
                           disabled={isLoading}
                         >

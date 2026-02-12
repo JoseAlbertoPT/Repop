@@ -8,6 +8,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { FileText, Plus, Search, Pencil, Trash2, Download } from "lucide-react"
 
+// Importar las funciones de SweetAlert2
+import { 
+  confirmDelete, 
+  showSuccess, 
+  showError, 
+  showLoading, 
+  closeLoading,
+  confirmUpdate
+} from '@/lib/swalUtils'
+
 export default function RegulatoryPage() {
   const [entities, setEntities] = useState<any[]>([])
   const [docs, setDocs] = useState<any[]>([])
@@ -17,6 +27,7 @@ export default function RegulatoryPage() {
   const [search, setSearch] = useState("")
   const [filterEntity, setFilterEntity] = useState("ALL")
   const [editing, setEditing] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(false)
 
   const [form, setForm] = useState({
     entityId: "",
@@ -26,7 +37,6 @@ export default function RegulatoryPage() {
     file: null as File | null
   })
 
-  // NUEVO: Obtener usuario actual del sessionStorage
   useEffect(() => {
     const userStr = sessionStorage.getItem("currentUser")
     if (userStr) {
@@ -39,14 +49,25 @@ export default function RegulatoryPage() {
     }
   }, [])
 
-  useEffect(() => {
-    fetch("/api/entes")
-      .then(r => r.json())
-      .then(data => setEntities(Array.isArray(data) ? data : []))
+  const loadData = async () => {
+    try {
+      const [entitiesRes, docsRes] = await Promise.all([
+        fetch("/api/entes"),
+        fetch("/api/marco-normativo")
+      ])
 
-    fetch("/api/marco-normativo")
-      .then(r => r.json())
-      .then(data => setDocs(Array.isArray(data) ? data : []))
+      const entitiesData = await entitiesRes.json()
+      const docsData = await docsRes.json()
+
+      setEntities(Array.isArray(entitiesData) ? entitiesData : [])
+      setDocs(Array.isArray(docsData) ? docsData : [])
+    } catch (error) {
+      console.error("Error loading data:", error)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
   }, [])
 
   const filteredDocs = useMemo(() => {
@@ -68,7 +89,6 @@ export default function RegulatoryPage() {
     if (!fileUrl) return null
     const parts = fileUrl.split('/')
     const fullFileName = parts[parts.length - 1]
-    // Remove timestamp prefix (e.g., "1770778990344-ewe.pdf" -> "ewe.pdf")
     const cleanFileName = fullFileName.replace(/^\d+-/, '')
     return cleanFileName
   }
@@ -108,19 +128,55 @@ export default function RegulatoryPage() {
     setOpen(true)
   }
 
+  const resetForm = () => {
+    setForm({
+      entityId: "",
+      type: "",
+      issueDate: "",
+      notes: "",
+      file: null
+    })
+  }
+
+  // Función saveDoc con SweetAlert2
   const saveDoc = async () => {
-    try {
-      if (!form.entityId || !form.type) {
-        alert("Ente y tipo de documento son obligatorios")
+    // Validación
+    if (!form.entityId || !form.type) {
+      showError("Campos requeridos", "Ente y tipo de documento son obligatorios")
+      return
+    }
+
+    // Guardar datos temporalmente antes de cerrar el modal
+    const tempForm = { ...form }
+    const tempEditing = editing ? { ...editing } : null
+    const isEditing = !!editing
+
+    // Cerrar el modal ANTES de mostrar confirmación (solo si es edición)
+    if (isEditing) {
+      setOpen(false)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      // Pedir confirmación para edición
+      const result = await confirmUpdate(`el documento "${tempForm.type}"`)
+      
+      if (!result.isConfirmed) {
+        // Usuario canceló, volver a abrir el modal
+        setOpen(true)
         return
       }
+    }
 
-      let archivoUrl: string | null = editing?.file || null
+    // Mostrar loading
+    showLoading(isEditing ? "Actualizando documento..." : "Guardando documento...", "Por favor espere")
+    setIsLoading(true)
+
+    try {
+      let archivoUrl: string | null = tempEditing?.file || null
 
       // Subir archivo si hay uno nuevo
-      if (form.file instanceof File) {
+      if (tempForm.file instanceof File) {
         const data = new FormData()
-        data.append("file", form.file)
+        data.append("file", tempForm.file)
 
         const uploadRes = await fetch("/api/upload", {
           method: "POST",
@@ -130,7 +186,9 @@ export default function RegulatoryPage() {
         if (!uploadRes.ok) {
           const errText = await uploadRes.text()
           console.error("UPLOAD ERROR:", errText)
-          alert("Error subiendo archivo")
+          closeLoading()
+          showError("Error al subir archivo", "No se pudo cargar el archivo. Intente nuevamente.")
+          if (isEditing) setOpen(true)
           return
         }
 
@@ -139,51 +197,96 @@ export default function RegulatoryPage() {
       }
 
       const payload = {
-        entityId: Number(form.entityId),
-        type: form.type,
-        issueDate: form.issueDate || null,
+        entityId: Number(tempForm.entityId),
+        type: tempForm.type,
+        issueDate: tempForm.issueDate || null,
         file: archivoUrl,
-        notes: form.notes || null
+        notes: tempForm.notes || null
       }
 
       const res = await fetch("/api/marco-normativo", {
-        method: editing ? "PUT" : "POST",
+        method: isEditing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editing ? { ...payload, id: editing.id } : payload),
+        body: JSON.stringify(isEditing ? { ...payload, id: tempEditing.id } : payload),
       })
 
-      const text = await res.text()
+      closeLoading()
 
       if (!res.ok) {
+        const text = await res.text()
         console.error("SERVER ERROR:", text)
-        alert("Error guardando documento")
+        showError("Error al guardar", "No se pudo guardar el documento. Intente nuevamente.")
+        if (isEditing) setOpen(true)
         return
       }
 
-      location.reload()
+      // Cerrar modal si no estaba cerrado (caso de creación)
+      if (!isEditing) {
+        setOpen(false)
+      }
+      
+      // Limpiar estados
+      setEditing(null)
+      resetForm()
+
+      // Mostrar éxito
+      await showSuccess(
+        isEditing ? "¡Actualizado!" : "¡Documento registrado!",
+        isEditing ? "Los cambios se guardaron correctamente" : "El documento ha sido registrado correctamente"
+      )
+
+      // Recargar datos
+      await loadData()
     } catch (err) {
+      closeLoading()
       console.error("SAVE ERROR:", err)
-      alert("Error inesperado al guardar")
+      showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
+      if (isEditing) setOpen(true)
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const deleteDoc = async (id: number) => {
-    //  VALIDACIÓN ADICIONAL: verificar si es ADMIN antes de eliminar
+  // Función deleteDoc con SweetAlert2
+  const deleteDoc = async (id: number, docType: string) => {
+    // Verificar permisos
     if (currentUser?.role !== "ADMIN") {
-      alert("No tienes permisos para eliminar documentos")
+      showError("Sin permisos", "Solo los administradores pueden eliminar documentos")
       return
     }
+
+    // Pedir confirmación
+    const result = await confirmDelete(`el documento "${docType}"`)
     
-    await fetch(`/api/marco-normativo?id=${id}`, { method: "DELETE" })
-    location.reload()
+    if (result.isConfirmed) {
+      // Mostrar loading
+      showLoading("Eliminando documento...", "Por favor espere")
+
+      try {
+        const res = await fetch(`/api/marco-normativo?id=${id}`, { method: "DELETE" })
+
+        closeLoading()
+
+        if (res.ok) {
+          // Mostrar éxito
+          await showSuccess("¡Eliminado!", `${docType} ha sido eliminado correctamente`)
+          await loadData()
+        } else {
+          const error = await res.json()
+          showError("Error al eliminar", error.error || "No se pudo eliminar el documento")
+        }
+      } catch (error) {
+        closeLoading()
+        console.error("Error deleting document:", error)
+        showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
+      }
+    }
   }
 
-  //  NUEVA FUNCIÓN: Verificar si el usuario puede eliminar
   const canDelete = () => {
     return currentUser?.role === "ADMIN"
   }
 
-  //  NUEVA FUNCIÓN: Verificar si el usuario puede editar
   const canEdit = () => {
     return currentUser?.role === "ADMIN" || currentUser?.role === "CAPTURISTA"
   }
@@ -195,11 +298,10 @@ export default function RegulatoryPage() {
           <h1 className="text-3xl font-bold">Marco Normativo</h1>
           <p className="text-muted-foreground">Documentos rectores y contractuales</p>
         </div>
-        {/* SOLO MOSTRAR BOTÓN NUEVO DOCUMENTO SI PUEDE EDITAR */}
         {canEdit() && (
           <Button onClick={() => { 
             setEditing(null); 
-            setForm({ entityId: "", type: "", issueDate: "", notes: "", file: null }); 
+            resetForm(); 
             setOpen(true) 
           }}>
             <Plus className="w-4 h-4 mr-2" /> Nuevo Documento
@@ -248,7 +350,7 @@ export default function RegulatoryPage() {
                   <p className="text-sm mt-2">
                     Fecha: {formatDate(doc.issueDate)}
                     {doc.file && (
-                      <span className="ml-120">Archivo: {getFileName(doc.file)}</span>
+                      <span className="ml-4">Archivo: {getFileName(doc.file)}</span>
                     )}
                   </p>
                   
@@ -258,24 +360,21 @@ export default function RegulatoryPage() {
                     </p>
                   )}
 
-                  {/* SECCIÓN MODIFICADA: Botones con validación de permisos */}
                   <div className="flex gap-2 mt-3">
-                    {/* SOLO MOSTRAR BOTÓN EDITAR SI PUEDE EDITAR */}
                     {canEdit() && (
                       <Button size="sm" variant="outline" onClick={() => openEdit(doc)}>
                         <Pencil className="w-4 h-4 mr-1" /> Editar
                       </Button>
                     )}
                     
-                    {/* SOLO MOSTRAR BOTÓN ELIMINAR SI ES ADMIN */}
                     {canDelete() && (
-                      <Button size="sm" variant="outline" onClick={() => deleteDoc(doc.id)}>
+                      <Button size="sm" variant="outline" onClick={() => deleteDoc(doc.id, doc.type)}>
                         <Trash2 className="w-4 h-4 mr-1" /> Eliminar
                       </Button>
                     )}
                     
                     {doc.file && (
-                      <a href={doc.file} target="_blank">
+                      <a href={doc.file} target="_blank" rel="noopener noreferrer">
                         <Button size="sm" variant="outline">
                           <Download className="w-4 h-4 mr-1" /> Descargar Archivo
                         </Button>
@@ -287,6 +386,13 @@ export default function RegulatoryPage() {
               <span className="text-xs bg-black text-white px-2 py-1 rounded-full">Vigente</span>
             </div>
           ))}
+
+          {filteredDocs.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground">
+              <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No se encontraron documentos</p>
+            </div>
+          )}
         </div>
       </Card>
 
@@ -298,7 +404,7 @@ export default function RegulatoryPage() {
 
           <div className="space-y-3">
             <div>
-              <label className="text-sm font-medium">Ente</label>
+              <label className="text-sm font-medium">Ente *</label>
               <Select value={form.entityId} onValueChange={(v) => setForm({ ...form, entityId: v })}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar ente" /></SelectTrigger>
                 <SelectContent>
@@ -310,7 +416,7 @@ export default function RegulatoryPage() {
             </div>
 
             <div>
-              <label className="text-sm font-medium">Tipo de Documento</label>
+              <label className="text-sm font-medium">Tipo de Documento *</label>
               <Input 
                 value={form.type} 
                 onChange={(e) => setForm({ ...form, type: e.target.value })} 
@@ -331,7 +437,7 @@ export default function RegulatoryPage() {
               <label className="text-sm font-medium">Archivo Digital</label>
               {editing?.file && (
                 <p className="text-xs text-muted-foreground mb-1">
-                  Archivo actual: <a href={editing.file} target="_blank" className="text-blue-600 hover:underline">Ver archivo</a>
+                  Archivo actual: <a href={editing.file} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Ver archivo</a>
                 </p>
               )}
               <Input 
@@ -357,8 +463,12 @@ export default function RegulatoryPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={saveDoc}>Guardar</Button>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading}>
+              Cancelar
+            </Button>
+            <Button onClick={saveDoc} disabled={isLoading}>
+              {isLoading ? "Guardando..." : "Guardar"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

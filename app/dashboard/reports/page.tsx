@@ -12,8 +12,35 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Download, FileText, Building2, Users, TrendingUp, FileDown, Filter } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
+
+// Importar las funciones de SweetAlert2
+import { 
+  showSuccess, 
+  showError, 
+  showLoading, 
+  closeLoading
+} from '@/lib/swalUtils'
+
+
+// Función para formatear fecha simple (YYYY-MM-DD)
+const formatDate = (dateString: string | null | undefined) => {
+  if (!dateString) return "N/A"
+  
+  try {
+    const date = new Date(dateString)
+    
+    // Formato: YYYY-MM-DD
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    
+    return `${year}-${month}-${day}`
+  } catch {
+    return "N/A"
+  }
+}
 
 export default function ReportsPage() {
   const { toast } = useToast()
@@ -28,13 +55,9 @@ export default function ReportsPage() {
   const [dateTo, setDateTo] = useState("")
   const [statusFilter, setStatusFilter] = useState<"Todos" | "Activo" | "Inactivo">("Todos")
 
-  const [showEfirmaDialog, setShowEfirmaDialog] = useState(false)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [pendingExport, setPendingExport] = useState<"pdf" | "excel" | null>(null)
-  const [cerFile, setCerFile] = useState<File | null>(null)
-  const [keyFile, setKeyFile] = useState<File | null>(null)
-  const [efirmaPassword, setEfirmaPassword] = useState("")
 
-  //   Estado para datos de la API
   const [apiData, setApiData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -46,7 +69,6 @@ export default function ReportsPage() {
     }
   }, [])
 
-  //   Fetch a la API con mejor manejo de errores
   useEffect(() => {
     const loadReports = async () => {
       try {
@@ -81,7 +103,6 @@ export default function ReportsPage() {
     loadReports()
   }, [toast])
 
-  //   Reemplazar variables seguras con datos de la API
   const safeEntities = apiData?.entities || []
   const safeGoverningBodies = apiData?.governingBodies || []
   const safeDirectors = apiData?.directors || []
@@ -151,118 +172,101 @@ export default function ReportsPage() {
     })
   }
 
-  const validateEfirma = async () => {
-    if (!cerFile || !keyFile || !efirmaPassword) {
-      toast({
-        title: "Faltan datos",
-        description: "Debe proporcionar el archivo .cer, .key y la contraseña",
-        variant: "destructive",
-      })
-      return false
-    }
-
-    // Simulate validation (in production this would verify the files)
-    toast({
-      title: "e.firma validada",
-      description: "Los archivos de e.firma son válidos",
-    })
-
-    return true
-  }
-
   const initiateExport = (type: "pdf" | "excel") => {
     if (selectedEntities.length === 0) {
-      toast({
-        title: "Seleccione entes",
-        description: "Debe seleccionar al menos un ente para exportar",
-        variant: "destructive",
-      })
+      showError("Seleccione entes", "Debe seleccionar al menos un ente para exportar")
       return
     }
 
     setPendingExport(type)
-    setShowEfirmaDialog(true)
+    setShowConfirmDialog(true)
   }
 
-  const executeExportWithSignature = async () => {
-    const isValid = await validateEfirma()
-    if (!isValid) return
+  // Función mejorada con SweetAlert2
+  const confirmExport = async () => {
+    if (!pendingExport) return
 
-    if (pendingExport === "pdf") {
-      handleExportPDF()
-    } else if (pendingExport === "excel") {
-      handleExportExcel()
+    // Cerrar el diálogo de confirmación
+    setShowConfirmDialog(false)
+
+    // Pequeño delay para que el diálogo se cierre
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // Mostrar loading
+    showLoading(
+      `Generando reporte ${pendingExport.toUpperCase()}...`,
+      `Procesando ${selectedEntities.length} ente(s) seleccionado(s)`
+    )
+
+    // Simular procesamiento
+    await new Promise(resolve => setTimeout(resolve, 800))
+
+    try {
+      if (pendingExport === "pdf") {
+        await handleExportPDF()
+      } else if (pendingExport === "excel") {
+        await handleExportExcel()
+      }
+
+      closeLoading()
+
+      // Mostrar éxito
+      await showSuccess(
+        "¡Reporte generado!",
+        `El archivo ${pendingExport.toUpperCase()} se ha descargado correctamente`
+      )
+    } catch (error) {
+      closeLoading()
+      console.error("Error generating report:", error)
+      showError(
+        "Error al generar reporte",
+        "No se pudo generar el archivo. Intente nuevamente."
+      )
+    } finally {
+      setPendingExport(null)
     }
-
-    // Reset e.firma dialog
-    setShowEfirmaDialog(false)
-    setPendingExport(null)
-    setCerFile(null)
-    setKeyFile(null)
-    setEfirmaPassword("")
   }
 
-  const handleExportExcel = () => {
-    if (selectedEntities.length === 0) {
-      toast({
-        title: "Seleccione entes",
-        description: "Debe seleccionar al menos un ente para exportar",
-        variant: "destructive",
-      })
-      return
-    }
-
+  const handleExportExcel = async () => {
     const historyData = getChangeHistoryData()
 
     let csvContent = "REPORTE DE HISTORIAL - REPOPA\n"
     csvContent += `Fecha de generación:,${new Date().toLocaleDateString("es-MX")}\n`
     csvContent += `Entes seleccionados:,${selectedEntities.length}\n`
-    if (cerFile && keyFile) {
-      csvContent += `\nFIRMADO ELECTRÓNICAMENTE\n`
-      csvContent += `Firmante:,Lic. José Emanuel Coronato Liñán\n`
-      csvContent += `Cargo:,Subprocurador de Recursos y Procedimientos Administrativos\n`
-      csvContent += `Fecha y hora:,${new Date().toLocaleString("es-MX")}\n`
-      csvContent += `Certificado:,00001000000123456789\n`
-      csvContent += `Cadena de firma:,${Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)}\n`
-    }
-    csvContent += `\n`
+    csvContent += `Generado por:,${currentUser?.name || "Sistema"}\n\n`
 
     historyData.forEach((data) => {
       csvContent += `\n=== ${data.entity.name} ===\n`
       csvContent += `Folio:,${data.entity.folio}\n`
       csvContent += `Tipo:,${data.entity.type}\n`
       csvContent += `Estatus:,${data.entity.status}\n`
-      csvContent += `Fecha de Creación:,${data.entity.creationDate || "N/A"}\n\n`
+      csvContent += `Fecha de Creación:,${formatDate(data.entity.creationDate)}\n\n`
 
-      // Documentos
       csvContent += "DOCUMENTOS NORMATIVOS\n"
       csvContent += "Tipo,Fecha de Emisión,Validez\n"
       data.docs.forEach((doc) => {
-        csvContent += `"${doc.type}","${doc.issueDate || "N/A"}","${doc.validity || "N/A"}"\n`
+        csvContent += `"${doc.type}","${formatDate(doc.issueDate)}","${doc.validity || "N/A"}"\n`
       })
       csvContent += "\n"
 
-      // Integrantes
       csvContent += "INTEGRANTES\n"
       csvContent += "Nombre,Cargo,Nombramiento,Estatus\n"
       data.bodies.forEach((body) => {
-        csvContent += `"${body.memberName}","${body.position}","${body.appointmentDate || "N/A"}","${body.status}"\n`
+        csvContent += `"${body.memberName}","${body.position}","${formatDate(body.appointmentDate)}","${body.status}"\n`
       })
       csvContent += "\n"
 
-      // Directores
       csvContent += "DIRECTORES\n"
       csvContent += "Nombre,Cargo,Fecha de Inicio\n"
       data.directors.forEach((dir) => {
-        csvContent += `"${dir.name}","${dir.position}","${dir.startDate || "N/A"}"\n`
+        csvContent += `"${dir.name}","${dir.position}","${formatDate(dir.startDate)}"\n`
       })
       csvContent += "\n"
 
-      // Poderes
       csvContent += "PODERES Y FACULTADES\n"
       csvContent += "Tipo de Poder,Apoderados,Fecha de Otorgamiento\n"
       data.powers.forEach((power) => {
-        csvContent += `"${power.powerType}","${power.attorneys.join("; ")}","${power.grantDate || "N/A"}"\n`
+        csvContent += `"${power.powerType}","${power.attorneys.join("; ")}","${formatDate(power.grantDate)}"\n`
       })
       csvContent += "\n\n"
     })
@@ -276,26 +280,11 @@ export default function ReportsPage() {
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-
-    toast({
-      title: "Reporte exportado",
-      description: "El reporte Excel (CSV) se ha generado y firmado correctamente",
-    })
   }
 
-  const handleExportPDF = () => {
-    if (selectedEntities.length === 0) {
-      toast({
-        title: "Seleccione entes",
-        description: "Debe seleccionar al menos un ente para exportar",
-        variant: "destructive",
-      })
-      return
-    }
-
+  const handleExportPDF = async () => {
     const historyData = getChangeHistoryData()
 
-    // Create HTML content for PDF
     let htmlContent = `
       <!DOCTYPE html>
       <html lang="es">
@@ -386,25 +375,6 @@ export default function ReportsPage() {
             padding-bottom: 5px;
             border-bottom: 2px solid #bc9b73;
           }
-          .signature-box {
-            margin-top: 40px;
-            padding: 20px;
-            border: 2px solid #7C4A36;
-            background: #f9f9f9;
-            page-break-inside: avoid;
-          }
-          .signature-title {
-            font-size: 18px;
-            font-weight: bold;
-            color: #2E3B2B;
-            margin-bottom: 15px;
-            text-align: center;
-          }
-          .signature-info {
-            font-size: 13px;
-            color: #333;
-            line-height: 1.8;
-          }
           .footer {
             margin-top: 40px;
             padding-top: 20px;
@@ -447,7 +417,7 @@ export default function ReportsPage() {
             <div class="info-label">Estatus:</div>
             <div>${data.entity.status}</div>
             <div class="info-label">Fecha de Creación:</div>
-            <div>${data.entity.creationDate || "N/A"}</div>
+            <div>${formatDate(data.entity.creationDate)}</div>
           </div>
 
           <div class="section-title">Documentos Normativos</div>
@@ -465,7 +435,7 @@ export default function ReportsPage() {
                   (doc) => `
                 <tr>
                   <td>${doc.type}</td>
-                  <td>${doc.issueDate || "N/A"}</td>
+                  <td>${formatDate(doc.issueDate)}</td>
                   <td>${doc.validity || "N/A"}</td>
                 </tr>
               `,
@@ -492,7 +462,7 @@ export default function ReportsPage() {
                 <tr>
                   <td>${body.memberName}</td>
                   <td>${body.position}</td>
-                  <td>${body.appointmentDate || "N/A"}</td>
+                  <td>${formatDate(body.appointmentDate)}</td>
                   <td>${body.status}</td>
                 </tr>
               `,
@@ -518,7 +488,7 @@ export default function ReportsPage() {
                 <tr>
                   <td>${dir.name}</td>
                   <td>${dir.position}</td>
-                  <td>${dir.startDate || "N/A"}</td>
+                  <td>${formatDate(dir.startDate)}</td>
                 </tr>
               `,
                 )
@@ -543,7 +513,7 @@ export default function ReportsPage() {
                 <tr>
                   <td>${power.powerType}</td>
                   <td>${power.attorneys.join(", ")}</td>
-                  <td>${power.grantDate || "N/A"}</td>
+                  <td>${formatDate(power.grantDate)}</td>
                 </tr>
               `,
                 )
@@ -554,22 +524,6 @@ export default function ReportsPage() {
         </div>
       `
     })
-
-    if (cerFile && keyFile) {
-      htmlContent += `
-        <div class="signature-box">
-          <div class="signature-title">DOCUMENTO FIRMADO ELECTRÓNICAMENTE</div>
-          <div class="signature-info">
-            <strong>Firmante:</strong> Lic. José Emanuel Coronato Liñán<br>
-            <strong>Cargo:</strong> Subprocurador de Recursos y Procedimientos Administrativos<br>
-            <strong>Fecha y hora:</strong> ${new Date().toLocaleString("es-MX")}<br>
-            <strong>Número de certificado:</strong> 00001000000123456789<br>
-            <strong>Cadena de firma:</strong> ${Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15).toUpperCase()}<br>
-            <strong>Leyenda:</strong> Documento firmado electrónicamente conforme a la normativa vigente
-          </div>
-        </div>
-      `
-    }
 
     htmlContent += `
         <div class="footer">
@@ -590,11 +544,6 @@ export default function ReportsPage() {
         printWindow.print()
       }, 500)
     }
-
-    toast({
-      title: "Reporte PDF generado",
-      description: "El documento ha sido firmado y está listo para imprimir",
-    })
   }
 
   const stats = {
@@ -612,7 +561,6 @@ export default function ReportsPage() {
 
   const trendData = getMonthlyTrendData()
 
-  //  CAMBIO 4 — Loading UI mejorado
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -624,7 +572,6 @@ export default function ReportsPage() {
     )
   }
 
-  //  Error UI
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -642,6 +589,8 @@ export default function ReportsPage() {
       </div>
     )
   }
+
+  const selectedEntitiesData = safeEntities.filter((e) => selectedEntities.includes(e.id))
 
   return (
     <div className="space-y-6">
@@ -666,40 +615,66 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <Dialog open={showEfirmaDialog} onOpenChange={setShowEfirmaDialog}>
-        <DialogContent className="max-w-md">
+      {/* Diálogo de confirmación */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Firma Electrónica</DialogTitle>
+            <DialogTitle>Confirmar Exportación</DialogTitle>
             <DialogDescription>
-              Cargue los archivos de su e.firma para firmar digitalmente el documento
+              Está por exportar un reporte en formato {pendingExport?.toUpperCase()} con la siguiente información:
             </DialogDescription>
           </DialogHeader>
+          
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="cerFile">Archivo .cer (Certificado) *</Label>
-              <Input id="cerFile" type="file" accept=".cer" onChange={(e) => setCerFile(e.target.files?.[0] || null)} />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Entes seleccionados</Label>
+                <p className="text-2xl font-bold">{selectedEntities.length}</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Formato</Label>
+                <p className="text-2xl font-bold">{pendingExport?.toUpperCase()}</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Fecha de generación</Label>
+                <p className="text-sm">{new Date().toLocaleDateString("es-MX", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Generado por</Label>
+                <p className="text-sm">{currentUser?.name || "Sistema"}</p>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="keyFile">Archivo .key (Clave Privada) *</Label>
-              <Input id="keyFile" type="file" accept=".key" onChange={(e) => setKeyFile(e.target.files?.[0] || null)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Contraseña *</Label>
-              <Input
-                id="password"
-                type="password"
-                value={efirmaPassword}
-                onChange={(e) => setEfirmaPassword(e.target.value)}
-                placeholder="Ingrese su contraseña"
-              />
+
+            <div className="border-t pt-4">
+              <Label className="text-sm font-semibold mb-2 block">Entes incluidos:</Label>
+              <div className="max-h-48 overflow-y-auto space-y-2">
+                {selectedEntitiesData.map((entity) => (
+                  <div key={entity.id} className="flex items-center justify-between p-2 bg-muted rounded">
+                    <div>
+                      <p className="font-medium text-sm">{entity.name}</p>
+                      <p className="text-xs text-muted-foreground">{entity.folio}</p>
+                    </div>
+                    <Badge variant={entity.type === "Organismo" ? "default" : "secondary"}>
+                      {entity.type}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowEfirmaDialog(false)}>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
               Cancelar
             </Button>
-            <Button onClick={executeExportWithSignature}>Firmar y Descargar</Button>
-          </div>
+            <Button onClick={confirmExport}>
+              Confirmar y Descargar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1079,7 +1054,7 @@ export default function ReportsPage() {
                         {entity.type}
                       </Badge>
                     </TableCell>
-                    <TableCell>{entity.creationDate || "N/A"}</TableCell>
+                    <TableCell>{formatDate(entity.creationDate)}</TableCell>
                     <TableCell>
                       <Badge variant={entity.status === "Activo" ? "default" : "outline"}>{entity.status}</Badge>
                     </TableCell>
@@ -1116,7 +1091,7 @@ export default function ReportsPage() {
                       <TableCell className="font-medium">{body.memberName}</TableCell>
                       <TableCell>{body.position}</TableCell>
                       <TableCell>{entity?.name || "N/A"}</TableCell>
-                      <TableCell>{body.appointmentDate || "N/A"}</TableCell>
+                      <TableCell>{formatDate(body.appointmentDate)}</TableCell>
                       <TableCell>
                         <Badge variant={body.status === "Activo" ? "default" : "outline"}>{body.status}</Badge>
                       </TableCell>
@@ -1155,7 +1130,7 @@ export default function ReportsPage() {
                       <TableCell className="font-medium">{director.name}</TableCell>
                       <TableCell>{director.position}</TableCell>
                       <TableCell>{entity?.name || "N/A"}</TableCell>
-                      <TableCell>{director.startDate || "N/A"}</TableCell>
+                      <TableCell>{formatDate(director.startDate)}</TableCell>
                       <TableCell>
                         <Badge variant={isActive ? "default" : "outline"}>{isActive ? "Vigente" : "Concluido"}</Badge>
                       </TableCell>
@@ -1194,7 +1169,7 @@ export default function ReportsPage() {
                       <TableCell className="font-medium">{power.powerType}</TableCell>
                       <TableCell>{power.holder}</TableCell>
                       <TableCell>{entity?.name || "N/A"}</TableCell>
-                      <TableCell>{power.grantDate || "N/A"}</TableCell>
+                      <TableCell>{formatDate(power.grantDate)}</TableCell>
                       <TableCell>
                         <Badge variant={isActive ? "default" : "outline"}>{isActive ? "Vigente" : "No Vigente"}</Badge>
                       </TableCell>

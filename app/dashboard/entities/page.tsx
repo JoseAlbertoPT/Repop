@@ -1,4 +1,4 @@
- "use client"
+"use client"
 
 import { useState, useEffect } from "react"
 import type { User, Entity } from "@/lib/types"
@@ -15,6 +15,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Search, Eye, Edit, Trash2, Building2, FileText, X, Download } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Checkbox } from "@/components/ui/checkbox"
+
+// Importar las funciones de SweetAlert2
+import { 
+  confirmDelete, 
+  showSuccess, 
+  showError, 
+  showLoading, 
+  closeLoading,
+  confirmUpdate
+} from '@/lib/swalUtils'
 
 export default function EntitiesPage() {
   const { toast } = useToast()
@@ -35,6 +45,8 @@ export default function EntitiesPage() {
   const [constanciaKeyFile, setConstanciaKeyFile] = useState<File | null>(null)
   const [constanciaPassword, setConstanciaPassword] = useState("")
   const [pendingConstanciaEntity, setPendingConstanciaEntity] = useState<Entity | null>(null)
+
+  const [isLoading, setIsLoading] = useState(false)
 
   const [formData, setFormData] = useState<any>({
     type: "OPD",
@@ -86,48 +98,143 @@ export default function EntitiesPage() {
     })
   }
 
+  // Función handleAdd con SweetAlert2
   const handleAdd = async () => {
+    // Validación
+    if (!formData.name || !formData.purpose) {
+      showError("Campos requeridos", "Por favor complete los campos obligatorios: Nombre y Objeto o Finalidad")
+      return
+    }
+
+    // Mostrar loading
+    showLoading("Guardando ente...", "Por favor espere")
+    setIsLoading(true)
+
     try {
       const res = await fetch("/api/entes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       })
-      if (!res.ok) throw new Error()
-      toast({ title: "Éxito", description: "Ente registrado correctamente" })
-      setIsAddDialogOpen(false)
-      resetForm()
-      loadEntities()
-    } catch {
-      toast({ title: "Error", description: "No se pudo registrar", variant: "destructive" })
+
+      closeLoading()
+
+      if (res.ok) {
+        // Cerrar modal y limpiar ANTES de mostrar alerta
+        setIsAddDialogOpen(false)
+        resetForm()
+        
+        // Mostrar éxito
+        await showSuccess("¡Ente registrado!", "El ente ha sido registrado correctamente")
+        
+        await loadEntities()
+      } else {
+        const error = await res.json()
+        showError("Error al guardar", error.error || "No se pudo guardar el ente")
+      }
+    } catch (error) {
+      closeLoading()
+      console.error("Error saving entity:", error)
+      showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
+    } finally {
+      setIsLoading(false)
     }
   }
 
+  // Función handleEdit con confirmación ANTES de guardar
   const handleEdit = async () => {
     if (!selectedEntity) return
+
+    // Guardar datos temporalmente antes de cerrar el modal
+    const tempFormData = { ...formData, id: selectedEntity.id }
+    const tempEntityName = selectedEntity.name
+
+    // Cerrar el modal ANTES de mostrar la confirmación
+    setIsEditDialogOpen(false)
+    
+    // Pequeño delay para que el modal se cierre completamente
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // Ahora pedir confirmación (sin modal de fondo)
+    const result = await confirmUpdate(`el ente "${tempEntityName}"`)
+    
+    if (!result.isConfirmed) {
+      // Usuario canceló, volver a abrir el modal
+      setIsEditDialogOpen(true)
+      return
+    }
+
+    // Usuario confirmó, continuar con el guardado
+    showLoading("Actualizando ente...", "Por favor espere")
+    setIsLoading(true)
+
     try {
       const res = await fetch(`/api/entes/${selectedEntity.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(tempFormData),
       })
-      if (!res.ok) throw new Error()
-      toast({ title: "Actualizado", description: "Registro actualizado correctamente" })
-      setIsEditDialogOpen(false)
-      loadEntities()
-    } catch {
-      toast({ title: "Error", description: "No se pudo actualizar", variant: "destructive" })
+
+      closeLoading()
+
+      if (res.ok) {
+        // Limpiar estados
+        setSelectedEntity(null)
+        
+        // Mostrar éxito
+        await showSuccess("¡Actualizado!", "Los cambios se guardaron correctamente")
+        
+        await loadEntities()
+      } else {
+        const error = await res.json()
+        showError("Error al actualizar", error.error || "No se pudieron guardar los cambios")
+        // Volver a abrir el modal si hay error
+        setIsEditDialogOpen(true)
+      }
+    } catch (error) {
+      closeLoading()
+      console.error("Error updating entity:", error)
+      showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
+      // Volver a abrir el modal si hay error
+      setIsEditDialogOpen(true)
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const handleDelete = async (id: string) => {
-    try {
-      const res = await fetch(`/api/entes/${id}`, { method: "DELETE" })
-      if (!res.ok) throw new Error()
-      toast({ title: "Eliminado", description: "Registro eliminado correctamente" })
-      loadEntities()
-    } catch {
-      toast({ title: "Error", description: "No se pudo eliminar", variant: "destructive" })
+  // Función handleDelete con SweetAlert2
+  const handleDelete = async (id: string, name: string) => {
+    // Verificar permisos
+    if (currentUser?.role !== "ADMIN") {
+      showError("Sin permisos", "Solo los administradores pueden eliminar registros")
+      return
+    }
+
+    // Pedir confirmación
+    const result = await confirmDelete(`el ente "${name}"`)
+    
+    if (result.isConfirmed) {
+      // Mostrar loading
+      showLoading("Eliminando ente...", "Por favor espere")
+
+      try {
+        const res = await fetch(`/api/entes/${id}`, { method: "DELETE" })
+
+        closeLoading()
+
+        if (res.ok) {
+          // Mostrar éxito
+          await showSuccess("¡Eliminado!", `${name} ha sido eliminado correctamente`)
+          await loadEntities()
+        } else {
+          const error = await res.json()
+          showError("Error al eliminar", error.error || "No se pudo eliminar el ente")
+        }
+      } catch (error) {
+        closeLoading()
+        console.error("Error deleting entity:", error)
+        showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
+      }
     }
   }
 
@@ -163,17 +270,42 @@ export default function EntitiesPage() {
     setShowConstanciaEfirmaDialog(true)
   }
 
-  const executeConstanciaDownload = () => {
+  const executeConstanciaDownload = async () => {
     if (!pendingConstanciaEntity) return
-    const blob = new Blob([`Constancia ${pendingConstanciaEntity.folio}`], { type: "text/plain" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `Constancia_${pendingConstanciaEntity.folio}.txt`
-    link.click()
-    URL.revokeObjectURL(url)
-    toast({ title: "Constancia generada", description: `Descargada para ${pendingConstanciaEntity.name}` })
-    setShowConstanciaEfirmaDialog(false)
+    
+    // Validación de campos
+    if (!constanciaCerFile || !constanciaKeyFile || !constanciaPassword) {
+      showError("Campos incompletos", "Por favor complete todos los campos de la firma electrónica")
+      return
+    }
+
+    showLoading("Generando constancia firmada...", "Por favor espere")
+
+    try {
+      // Simulación de proceso de firma (aquí iría la lógica real de firma)
+      await new Promise(resolve => setTimeout(resolve, 1500))
+
+      const blob = new Blob([`Constancia ${pendingConstanciaEntity.folio}`], { type: "text/plain" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `Constancia_${pendingConstanciaEntity.folio}.txt`
+      link.click()
+      URL.revokeObjectURL(url)
+
+      closeLoading()
+      
+      // Cerrar modal ANTES de mostrar éxito
+      setShowConstanciaEfirmaDialog(false)
+      setConstanciaCerFile(null)
+      setConstanciaKeyFile(null)
+      setConstanciaPassword("")
+
+      await showSuccess("¡Constancia generada!", `Descargada para ${pendingConstanciaEntity.name}`)
+    } catch (error) {
+      closeLoading()
+      showError("Error al firmar", "No se pudo generar la constancia firmada")
+    }
   }
 
   const filteredEntities = entities.filter(e =>
@@ -195,7 +327,6 @@ export default function EntitiesPage() {
           <p className="text-muted-foreground mt-2">Registro Público de Organismos Públicos Auxiliares</p>
         </div>
         
-        {}
         {canEdit && (
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
@@ -381,7 +512,9 @@ export default function EntitiesPage() {
                 <Button variant="outline" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
                   Cancelar
                 </Button>
-                <Button onClick={handleAdd}>Registrar</Button>
+                <Button onClick={handleAdd} disabled={isLoading}>
+                  {isLoading ? "Guardando..." : "Registrar"}
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -482,7 +615,7 @@ export default function EntitiesPage() {
                       </Button>
                     )}
                     {isAdmin && (
-                      <Button variant="outline" size="sm" onClick={() => handleDelete(entity.id)}>
+                      <Button variant="outline" size="sm" onClick={() => handleDelete(entity.id, entity.name)}>
                         <Trash2 className="w-4 h-4 mr-1" />
                         Eliminar
                       </Button>
@@ -505,7 +638,7 @@ export default function EntitiesPage() {
         </CardContent>
       </Card>
 
-      {}
+      {/* Modal Ver */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -565,10 +698,13 @@ export default function EntitiesPage() {
               </div>
             </div>
           )}
+          <div className="flex justify-end">
+            <Button onClick={() => setIsViewDialogOpen(false)}>Cerrar</Button>
+          </div>
         </DialogContent>
       </Dialog>
 
-      {}
+      {/* Modal Editar */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -734,12 +870,14 @@ export default function EntitiesPage() {
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleEdit}>Guardar Cambios</Button>
+            <Button onClick={handleEdit} disabled={isLoading}>
+              {isLoading ? "Guardando..." : "Guardar Cambios"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {}
+      {/* Modal e.firma para Constancia */}
       <Dialog open={showConstanciaEfirmaDialog} onOpenChange={setShowConstanciaEfirmaDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>

@@ -14,6 +14,16 @@ import { Plus, Search, Edit, Trash2, Users, Save, Eye } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
+// Importar las funciones de SweetAlert2
+import { 
+  confirmDelete, 
+  showSuccess, 
+  showError, 
+  showLoading, 
+  closeLoading,
+  confirmUpdate
+} from '@/lib/swalUtils'
+
 // Función auxiliar para formatear fechas
 const formatDate = (dateString: string | null | undefined): string => {
   if (!dateString) return "No especificada"
@@ -143,11 +153,7 @@ export default function GoverningBodiesPage() {
 
   const handleAddToBatch = () => {
     if (!formData.entityId || !formData.memberName || !formData.position) {
-      toast({
-        title: "Error",
-        description: "Por favor complete los campos requeridos",
-        variant: "destructive",
-      })
+      showError("Campos requeridos", "Por favor complete: Ente, Nombre del Integrante y Cargo")
       return
     }
 
@@ -184,17 +190,17 @@ export default function GoverningBodiesPage() {
 
   const handleSaveBatch = async () => {
     if (batchMembers.length === 0) {
-      toast({
-        title: "Error",
-        description: "Agregue al menos un integrante",
-        variant: "destructive",
-      })
+      showError("Lista vacía", "Agregue al menos un integrante a la lista antes de guardar")
       return
     }
 
+    showLoading("Guardando integrantes...", "Por favor espere")
     setIsLoading(true)
+
     try {
       let successCount = 0
+      let errorCount = 0
+      
       for (const member of batchMembers) {
         const res = await fetch("/api/integrantes-organo", {
           method: "POST",
@@ -205,17 +211,16 @@ export default function GoverningBodiesPage() {
         if (res.ok) {
           successCount++
         } else {
+          errorCount++
           const error = await res.json()
           console.error("Error al guardar:", error)
         }
       }
 
+      closeLoading()
+
       if (successCount === batchMembers.length) {
-        toast({
-          title: "Registrados",
-          description: `Se registraron ${successCount} integrantes correctamente`,
-        })
-        
+        // Cerrar modal y limpiar ANTES de mostrar éxito
         setIsAddingBatch(false)
         setBatchMembers([])
         setEditingIndex(null)
@@ -229,25 +234,26 @@ export default function GoverningBodiesPage() {
           status: "Activo",
           observations: "",
         })
+
+        await showSuccess(
+          "¡Integrantes registrados!", 
+          `Se registraron ${successCount} integrantes correctamente`
+        )
         
-        // Recargar los datos desde la API
+        await loadGoverningBodies()
+      } else if (successCount > 0) {
+        await showError(
+          "Guardado parcial",
+          `Se registraron ${successCount} de ${batchMembers.length} integrantes`
+        )
         await loadGoverningBodies()
       } else {
-        toast({
-          title: "Parcialmente completado",
-          description: `Se registraron ${successCount} de ${batchMembers.length} integrantes`,
-          variant: "destructive",
-        })
-        // Recargar de todos modos para mostrar los que sí se guardaron
-        await loadGoverningBodies()
+        showError("Error al guardar", "No se pudo guardar ningún integrante. Intente nuevamente.")
       }
     } catch (error) {
+      closeLoading()
       console.error("Error saving batch:", error)
-      toast({
-        title: "Error",
-        description: "Error al guardar integrantes",
-        variant: "destructive",
-      })
+      showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
     } finally {
       setIsLoading(false)
     }
@@ -269,30 +275,60 @@ export default function GoverningBodiesPage() {
   const handleSaveEdit = async () => {
     if (!selectedBody) return
 
+    // Guardar datos temporalmente antes de cerrar el modal
+    const tempEditFormData = { ...editFormData, id: selectedBody.id }
+    const tempMemberName = editFormData.memberName || selectedBody.memberName
+
+    // Cerrar el modal ANTES de mostrar la confirmación
+    setEditDialogOpen(false)
+    
+    // Pequeño delay para que el modal se cierre completamente
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // Pedir confirmación
+    const result = await confirmUpdate(`el integrante "${tempMemberName}"`)
+    
+    if (!result.isConfirmed) {
+      // Usuario canceló, volver a abrir el modal
+      setEditDialogOpen(true)
+      return
+    }
+
+    // Usuario confirmó, continuar con el guardado
+    showLoading("Actualizando integrante...", "Por favor espere")
+    setIsLoading(true)
+
     try {
       const res = await fetch("/api/integrantes-organo", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...editFormData, id: selectedBody.id }),
+        body: JSON.stringify(tempEditFormData),
       })
 
+      closeLoading()
+
       if (res.ok) {
-        toast({
-          title: "Actualizado",
-          description: "El integrante ha sido actualizado correctamente",
-        })
-        setEditDialogOpen(false)
+        // Limpiar estados
         setSelectedBody(null)
         setEditFormData({})
+
+        await showSuccess("¡Actualizado!", "Los cambios se guardaron correctamente")
+        
         await loadGoverningBodies()
+      } else {
+        const error = await res.json()
+        showError("Error al actualizar", error.error || "No se pudieron guardar los cambios")
+        // Volver a abrir el modal si hay error
+        setEditDialogOpen(true)
       }
     } catch (error) {
+      closeLoading()
       console.error("Error updating:", error)
-      toast({
-        title: "Error",
-        description: "Error al actualizar",
-        variant: "destructive",
-      })
+      showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
+      // Volver a abrir el modal si hay error
+      setEditDialogOpen(true)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -320,37 +356,60 @@ export default function GoverningBodiesPage() {
     }
   }
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: number, memberName: string) => {
+    // Verificar permisos
     if (!isAdmin) {
-      toast({
-        title: "Sin permisos",
-        description: "Solo los administradores pueden eliminar registros",
-        variant: "destructive",
-      })
+      showError("Sin permisos", "Solo los administradores pueden eliminar registros")
       return
     }
 
-    try {
-      const res = await fetch(`/api/integrantes-organo/${id}`, {
-        method: "DELETE",
-      })
+    // Pedir confirmación
+    const result = await confirmDelete(`el integrante "${memberName}"`)
+    
+    if (result.isConfirmed) {
+      // Mostrar loading
+      showLoading("Eliminando integrante...", "Por favor espere")
 
-      if (!res.ok) throw new Error()
+      try {
+        const res = await fetch(`/api/integrantes-organo/${id}`, {
+          method: "DELETE",
+        })
 
-      toast({
-        title: "Eliminado",
-        description: "El registro ha sido eliminado",
-      })
+        closeLoading()
 
-      await loadGoverningBodies()
-    } catch (error) {
-      console.error(error)
-      toast({
-        title: "Error",
-        description: "No se pudo eliminar",
-        variant: "destructive",
-      })
+        if (res.ok) {
+          await showSuccess("¡Eliminado!", `${memberName} ha sido eliminado correctamente`)
+          await loadGoverningBodies()
+        } else {
+          const error = await res.json()
+          showError("Error al eliminar", error.error || "No se pudo eliminar el integrante")
+        }
+      } catch (error) {
+        closeLoading()
+        console.error("Error deleting:", error)
+        showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
+      }
     }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      entityId: "",
+      bodyType: "",
+      memberName: "",
+      position: "",
+      appointmentDate: "",
+      designationInstrument: "",
+      status: "Activo",
+      observations: "",
+    })
+  }
+
+  const cancelBatchAdd = () => {
+    setIsAddingBatch(false)
+    setBatchMembers([])
+    setEditingIndex(null)
+    resetForm()
   }
 
   return (
@@ -493,7 +552,7 @@ export default function GoverningBodiesPage() {
                           <p className="font-semibold">{member.memberName}</p>
                           <p className="text-sm text-muted-foreground">{member.position}</p>
                           <p className="text-xs text-muted-foreground">
-                            {entity?.nombre_oficial} - {member.bodyType}
+                            {entity?.name} - {member.bodyType}
                           </p>
                         </div>
                         <div className="flex gap-1">
@@ -513,24 +572,7 @@ export default function GoverningBodiesPage() {
 
             {/* Botones de acción */}
             <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsAddingBatch(false)
-                  setBatchMembers([])
-                  setEditingIndex(null)
-                  setFormData({
-                    entityId: "",
-                    bodyType: "",
-                    memberName: "",
-                    position: "",
-                    appointmentDate: "",
-                    designationInstrument: "",
-                    status: "Activo",
-                    observations: "",
-                  })
-                }}
-              >
+              <Button variant="outline" onClick={cancelBatchAdd} disabled={isLoading}>
                 Cancelar
               </Button>
               <Button onClick={handleSaveBatch} disabled={batchMembers.length === 0 || isLoading}>
@@ -692,10 +734,12 @@ export default function GoverningBodiesPage() {
             </div>
           )}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={isLoading}>
               Cancelar
             </Button>
-            <Button onClick={handleSaveEdit}>Guardar Cambios</Button>
+            <Button onClick={handleSaveEdit} disabled={isLoading}>
+              {isLoading ? "Guardando..." : "Guardar Cambios"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -779,23 +823,24 @@ export default function GoverningBodiesPage() {
                       </p>
                     </div>
                     
-                    {/*  Botones con validación correcta */}
                     <div className="flex gap-1">
-                      {/* Todos pueden ver */}
                       <Button variant="ghost" size="sm" onClick={() => openViewDialog(body.id)} title="Ver detalles">
                         <Eye className="w-4 h-4" />
                       </Button>
                       
-                      {/* Solo ADMIN y CAPTURISTA pueden editar */}
                       {canEdit && (
                         <Button variant="ghost" size="sm" onClick={() => openEditDialog(body.id)} title="Editar">
                           <Edit className="w-4 h-4" />
                         </Button>
                       )}
                       
-                      {/* Solo ADMIN puede eliminar */}
                       {isAdmin && (
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(body.id)} title="Eliminar">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => handleDelete(body.id, body.memberName)} 
+                          title="Eliminar"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       )}

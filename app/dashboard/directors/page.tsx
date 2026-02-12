@@ -14,6 +14,16 @@ import { Textarea } from "@/components/ui/textarea"
 import { Plus, Search, Edit, Trash2, UserCog, Eye } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
+//  Importar las funciones de SweetAlert2
+import { 
+  confirmDelete, 
+  showSuccess, 
+  showError, 
+  showLoading, 
+  closeLoading,
+  confirmUpdate
+} from '@/lib/swalUtils'
+
 //   endDate eliminado
 interface Director {
   id: number
@@ -152,17 +162,18 @@ export default function DirectorsPage() {
     return matchesSearch && matchesEntity
   })
 
+  //  Función handleAdd con SweetAlert2
   const handleAdd = async () => {
+    // Validación
     if (!formData.entityId || !formData.name || !formData.position) {
-      toast({
-        title: "Error",
-        description: "Por favor complete los campos requeridos",
-        variant: "destructive",
-      })
+      showError("Campos requeridos", "Por favor complete los campos obligatorios: Ente, Nombre y Cargo")
       return
     }
 
+    // Mostrar loading
+    showLoading("Guardando responsable...", "Por favor espere")
     setIsLoading(true)
+
     try {
       const res = await fetch("/api/representantes", {
         method: "POST",
@@ -170,11 +181,10 @@ export default function DirectorsPage() {
         body: JSON.stringify(formData),
       })
 
+      closeLoading()
+
       if (res.ok) {
-        toast({
-          title: "Director registrado",
-          description: "El responsable ha sido registrado correctamente",
-        })
+        // Cerrar modal y limpiar ANTES de mostrar alerta
         setIsAddDialogOpen(false)
         setFormData({
           entityId: "",
@@ -186,88 +196,120 @@ export default function DirectorsPage() {
           supportDocumentFile: null,
           observations: "",
         })
+        
+        // Mostrar éxito
+        await showSuccess("¡Responsable registrado!", "El responsable ha sido registrado correctamente")
+        
         await loadDirectors()
       } else {
         const error = await res.json()
-        toast({
-          title: "Error",
-          description: error.error || "Error al guardar",
-          variant: "destructive",
-        })
+        showError("Error al guardar", error.error || "No se pudo guardar el responsable")
       }
     } catch (error) {
+      closeLoading()
       console.error("Error saving director:", error)
-      toast({
-        title: "Error",
-        description: "Error al guardar representante",
-        variant: "destructive",
-      })
+      showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
     } finally {
       setIsLoading(false)
     }
   }
 
+  //  Función handleEdit con confirmación ANTES de guardar
   const handleEdit = async () => {
     if (!selectedDirector) return
 
+    // Guardar datos temporalmente antes de cerrar el modal
+    const tempFormData = { ...formData, id: selectedDirector.id }
+    const tempDirectorName = selectedDirector.name
+
+    // Cerrar el modal ANTES de mostrar la confirmación
+    setIsEditDialogOpen(false)
+    
+    // Pequeño delay para que el modal se cierre completamente
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // Ahora pedir confirmación (sin modal de fondo)
+    const result = await confirmUpdate(`el responsable "${tempDirectorName}"`)
+    
+    if (!result.isConfirmed) {
+      // Usuario canceló, volver a abrir el modal
+      setIsEditDialogOpen(true)
+      return
+    }
+
+    // Usuario confirmó, continuar con el guardado
+    showLoading("Actualizando responsable...", "Por favor espere")
     setIsLoading(true)
+
     try {
       const res = await fetch("/api/representantes", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, id: selectedDirector.id }),
+        body: JSON.stringify(tempFormData),
       })
 
+      closeLoading()
+
       if (res.ok) {
-        toast({
-          title: "Actualizado",
-          description: "El registro ha sido actualizado correctamente",
-        })
-        setIsEditDialogOpen(false)
+        // Limpiar estados
         setSelectedDirector(null)
+        
+        // Mostrar éxito
+        await showSuccess("¡Actualizado!", "Los cambios se guardaron correctamente")
+        
         await loadDirectors()
+      } else {
+        const error = await res.json()
+        showError("Error al actualizar", error.error || "No se pudieron guardar los cambios")
+        // Volver a abrir el modal si hay error
+        setIsEditDialogOpen(true)
       }
     } catch (error) {
+      closeLoading()
       console.error("Error updating director:", error)
-      toast({
-        title: "Error",
-        description: "Error al actualizar",
-        variant: "destructive",
-      })
+      showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
+      // Volver a abrir el modal si hay error
+      setIsEditDialogOpen(true)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleDelete = async (id: number) => {
+  // Función handleDelete con SweetAlert2
+  const handleDelete = async (id: number, name: string) => {
+    // Verificar permisos
     if (currentUser?.role !== "ADMIN") {
-      toast({
-        title: "Sin permisos",
-        description: "Solo los administradores pueden eliminar registros",
-        variant: "destructive",
-      })
+      showError("Sin permisos", "Solo los administradores pueden eliminar registros")
       return
     }
 
-    try {
-      const res = await fetch(`/api/representantes?id=${id}`, {
-        method: "DELETE",
-      })
+    // Pedir confirmación
+    const result = await confirmDelete(`el responsable "${name}"`)
+    
+    if (result.isConfirmed) {
+      // Mostrar loading
+      showLoading("Eliminando responsable...", "Por favor espere")
 
-      if (res.ok) {
-        toast({
-          title: "Eliminado",
-          description: "El registro ha sido eliminado",
+      try {
+        const res = await fetch(`/api/representantes?id=${id}`, {
+          method: "DELETE",
         })
-        await loadDirectors()
+
+        closeLoading()
+
+        if (res.ok) {
+          // Mostrar éxito
+          await showSuccess("¡Eliminado!", `${name} ha sido eliminado correctamente`)
+          await loadDirectors()
+        } else {
+          const error = await res.json()
+          showError("Error al eliminar", error.error || "No se pudo eliminar el responsable")
+        }
+      } catch (error) {
+        closeLoading()
+        console.error("Error deleting director:", error)
+        showError("Error de conexión", "No se pudo conectar con el servidor. Intente nuevamente.")
       }
-    } catch (error) {
-      console.error("Error deleting director:", error)
-      toast({
-        title: "Error",
-        description: "Error al eliminar",
-        variant: "destructive",
-      })
     }
   }
 
@@ -656,7 +698,7 @@ export default function DirectorsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleDelete(director.id)}
+                          onClick={() => handleDelete(director.id, director.name)}
                           className="bg-background rounded-lg"
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
