@@ -47,6 +47,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     setMounted(true)
+    
+    // Limpiar sesión anterior al cargar la página de login
+    sessionStorage.removeItem("currentUser")
+    sessionStorage.removeItem("jwtToken")
   }, [])
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -63,6 +67,8 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
+      console.log("Intentando login con:", email)
+
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -70,7 +76,10 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       })
 
+      console.log("Respuesta del servidor:", res.status)
+
       const data = await res.json()
+      console.log("Datos recibidos:", data)
 
       if (!res.ok) {
         setError(data.error || "Error al iniciar sesión")
@@ -78,15 +87,30 @@ export default function LoginPage() {
         return
       }
 
+      // Validar que tenemos los datos necesarios
+      if (!data.id || !data.role) {
+        console.error("Datos incompletos del usuario:", data)
+        setError("Error en la respuesta del servidor")
+        setLoading(false)
+        return
+      }
+
+      console.log("Usuario autenticado:", data)
+
+      // Guardar en sessionStorage
       sessionStorage.setItem("currentUser", JSON.stringify(data))
       sessionStorage.setItem("jwtToken", data.token)
 
+      console.log("Datos guardados en sessionStorage")
+      console.log("Redirigiendo a dashboard...")
+
+      // Redirigir al dashboard
       router.push("/dashboard")
+      router.refresh()
 
     } catch (err) {
-      console.error(err)
+      console.error("Error en login:", err)
       setError("No se pudo conectar con el servidor")
-    } finally {
       setLoading(false)
     }
   }
@@ -94,11 +118,11 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen relative flex items-center justify-end p-4 overflow-hidden">
       {/* Imagen de fondo en el lado izquierdo */}
-      <div className="absolute inset-y-0 left-0 w-full lg:w-1/2">
+      <div className="absolute inset-y-0 left-0 w-full lg:w-[calc(50%-2px)]">
         <div className="relative h-full w-full">
           {/* Imagen */}
           <img 
-            src="/images/LOG-IN_REPOPA-01.jpg" 
+            src="/images/logo-repopa.jpg" 
             alt="REPOPA Background" 
             className="h-full w-full object-cover object-center"
           />
@@ -108,14 +132,14 @@ export default function LoginPage() {
       </div>
 
       {/* Fondo base con gradiente animado - solo lado derecho */}
-      <div className="absolute inset-y-0 right-0 w-full lg:w-1/2 bg-gradient-to-br from-[#0f1810] via-[#1a2318] to-[#2a1810]">
+      <div className="absolute inset-y-0 right-0 w-full lg:w-[calc(50%+2px)] bg-gradient-to-br from-[#0f1810] via-[#1a2318] to-[#2a1810]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(113,120,91,0.15),transparent_50%)] animate-pulse-subtle" />
         <div className="absolute inset-0 bg-gradient-to-tr from-[#7C4A36]/10 via-transparent to-[#71785b]/10 animate-gradient-rotate" />
       </div>
 
       {/* Estrellas titilantes - solo lado derecho */}
       {mounted && (
-        <div className="absolute inset-y-0 right-0 w-full lg:w-1/2">
+        <div className="absolute inset-y-0 right-0 w-full lg:w-[calc(50%+2px)]">
           {stars.map((star) => (
             <div
               key={star.id}
@@ -134,7 +158,7 @@ export default function LoginPage() {
       
       {/* Partículas flotantes mejoradas - solo lado derecho */}
       {mounted && (
-        <div className="absolute inset-y-0 right-0 w-full lg:w-1/2">
+        <div className="absolute inset-y-0 right-0 w-full lg:w-[calc(50%+2px)]">
           {particles.map((particle) => (
             <div
               key={particle.id}
@@ -159,11 +183,11 @@ export default function LoginPage() {
       <div className="absolute top-1/2 right-1/4 w-[400px] h-[400px] bg-white/3 rounded-full blur-[150px] animate-pulse-glow" />
 
       {/* Rejilla 3D mejorada - solo lado derecho */}
-      <div className="absolute inset-y-0 right-0 w-full lg:w-1/2 bg-[linear-gradient(rgba(255,255,255,.04)_1.5px,transparent_1.5px),linear-gradient(90deg,rgba(255,255,255,.04)_1.5px,transparent_1.5px)] bg-[size:50px_50px] [mask-image:radial-gradient(ellipse_70%_70%_at_50%_50%,black_20%,transparent_80%)] animate-grid-move" />
+      <div className="absolute inset-y-0 right-0 w-full lg:w-[calc(50%+2px)] bg-[linear-gradient(rgba(255,255,255,.04)_1.5px,transparent_1.5px),linear-gradient(90deg,rgba(255,255,255,.04)_1.5px,transparent_1.5px)] bg-[size:50px_50px] [mask-image:radial-gradient(ellipse_70%_70%_at_50%_50%,black_20%,transparent_80%)] animate-grid-move" />
 
-      {/* Card principal COMPACTO - Posicionado a la derecha */}
+      {/* Card principal COMPACTO - Posicionado más a la derecha */}
       <Card 
-        className="w-full max-w-[420px] relative shadow-[0_0_80px_rgba(0,0,0,0.3)] border-0 bg-gradient-to-br from-white/[0.98] via-white/[0.95] to-white/[0.92] backdrop-blur-3xl animate-card-entrance overflow-hidden group lg:mr-12 z-20"
+        className="w-full max-w-[420px] relative shadow-[0_0_80px_rgba(0,0,0,0.3)] border-0 bg-gradient-to-br from-white/[0.98] via-white/[0.95] to-white/[0.92] backdrop-blur-3xl animate-card-entrance overflow-hidden group lg:mr-24 z-20"
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setIsHoveringCard(true)}
         onMouseLeave={() => setIsHoveringCard(false)}
@@ -300,6 +324,7 @@ export default function LoginPage() {
                     onBlur={() => setFocusedField(null)}
                     className="pl-16 pr-3 h-11 text-sm transition-all duration-300 focus:ring-0 border-2 border-gray-200 focus:border-primary bg-white hover:bg-gray-50 focus:bg-white rounded-lg font-medium"
                     required
+                    disabled={loading}
                   />
                   
                   {email && email.includes('@') && (
@@ -357,12 +382,14 @@ export default function LoginPage() {
                     onBlur={() => setFocusedField(null)}
                     className="pl-16 pr-12 h-11 text-sm transition-all duration-300 focus:ring-0 border-2 border-gray-200 focus:border-primary bg-white hover:bg-gray-50 focus:bg-white rounded-lg font-medium"
                     required
+                    disabled={loading}
                   />
                   
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-primary hover:bg-primary/10 transition-all duration-200 group"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-primary hover:bg-primary/10 transition-all duration-200 group disabled:opacity-50"
+                    disabled={loading}
                   >
                     {showPassword ? (
                       <EyeOff className="w-4 h-4 group-hover:scale-110 transition-transform" />
