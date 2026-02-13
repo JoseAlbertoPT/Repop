@@ -1,13 +1,14 @@
 "use client"
 
-import React, { useState, useEffect, useMemo } from "react"
+import React, { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Shield, AlertCircle, Mail, Lock, Sparkles, Eye, EyeOff, ChevronRight, Fingerprint } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
+import { Shield, AlertCircle, Mail, Lock, Eye, EyeOff } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import Image from "next/image"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -15,46 +16,22 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const [focusedField, setFocusedField] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
-  const [mounted, setMounted] = useState(false)
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
-  const [isHoveringCard, setIsHoveringCard] = useState(false)
+  const [passwordValid, setPasswordValid] = useState<boolean | null>(null)
 
-  // Partículas optimizadas
-  const particles = useMemo(() => {
-    return Array.from({ length: 30 }, (_, i) => ({
-      id: i,
-      size: 40 + (i * 5) % 120,
-      left: (i * 11) % 100,
-      top: (i * 13) % 100,
-      delay: (i * 0.2) % 5,
-      duration: 12 + (i * 1.5) % 15,
-      opacity: 0.15 + (i % 3) * 0.05,
-    }))
-  }, [])
+  const validatePassword = (pass: string) => {
+    if (pass.length === 0) {
+      setPasswordValid(null)
+      return
+    }
+    const isValid = pass.length >= 6
+    setPasswordValid(isValid)
+  }
 
-  // Estrellas de fondo
-  const stars = useMemo(() => {
-    return Array.from({ length: 50 }, (_, i) => ({
-      id: i,
-      left: (i * 19) % 100,
-      top: (i * 23) % 100,
-      size: 1 + (i % 3),
-      delay: (i * 0.1) % 3,
-    }))
-  }, [])
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    setMousePosition({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    })
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newPassword = e.target.value
+    setPassword(newPassword)
+    validatePassword(newPassword)
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -92,781 +69,281 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden">
-      {/* Fondo base con gradiente animado */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#0f1810] via-[#1a2318] to-[#2a1810]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(113,120,91,0.15),transparent_50%)] animate-pulse-subtle" />
-        <div className="absolute inset-0 bg-gradient-to-tr from-[#7C4A36]/10 via-transparent to-[#71785b]/10 animate-gradient-rotate" />
+    <div className="min-h-screen flex overflow-hidden">
+      {/* Panel Izquierdo - Imagen REPOPA de fondo */}
+      <div className="hidden lg:flex lg:w-[42%] relative bg-[#3d5043] items-center justify-center overflow-hidden">
+        <div className="relative w-full h-full pb-53">
+          <Image 
+            src="/images/logo-repopa.jpg"
+            alt="REPOPA - Registro Público de Organismos Públicos Auxiliares"
+            fill
+            className="object-contain"
+            priority
+            quality={100}
+          />
+        </div>
       </div>
 
-      {/* Estrellas titilantes */}
-      {mounted && (
-        <div className="absolute inset-0">
-          {stars.map((star) => (
-            <div
-              key={star.id}
-              className="absolute rounded-full bg-white animate-twinkle-star"
-              style={{
-                width: `${star.size}px`,
-                height: `${star.size}px`,
-                left: `${star.left}%`,
-                top: `${star.top}%`,
-                animationDelay: `${star.delay}s`,
-              }}
-            />
-          ))}
-        </div>
-      )}
-      
-      {/* Partículas flotantes mejoradas */}
-      {mounted && (
-        <div className="absolute inset-0">
-          {particles.map((particle) => (
-            <div
-              key={particle.id}
-              className="absolute rounded-full backdrop-blur-sm animate-float-3d"
-              style={{
-                width: `${particle.size}px`,
-                height: `${particle.size}px`,
-                left: `${particle.left}%`,
-                top: `${particle.top}%`,
-                background: `radial-gradient(circle, rgba(255,255,255,${particle.opacity}) 0%, transparent 70%)`,
-                animationDelay: `${particle.delay}s`,
-                animationDuration: `${particle.duration}s`,
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Luces ambientales dinámicas */}
-      <div className="absolute top-1/4 left-1/3 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[100px] animate-float-ambient" />
-      <div className="absolute bottom-1/3 right-1/4 w-[600px] h-[600px] bg-[#7C4A36]/5 rounded-full blur-[120px] animate-float-ambient-delayed" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-white/3 rounded-full blur-[150px] animate-pulse-glow" />
-
-      {/* Rejilla 3D mejorada */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.04)_1.5px,transparent_1.5px),linear-gradient(90deg,rgba(255,255,255,.04)_1.5px,transparent_1.5px)] bg-[size:50px_50px] [mask-image:radial-gradient(ellipse_70%_70%_at_50%_50%,black_20%,transparent_80%)] animate-grid-move" />
-
-      {/* Card principal COMPACTO */}
-      <Card 
-        className="w-full max-w-[420px] relative shadow-[0_0_80px_rgba(0,0,0,0.3)] border-0 bg-gradient-to-br from-white/[0.98] via-white/[0.95] to-white/[0.92] backdrop-blur-3xl animate-card-entrance overflow-hidden group"
-        onMouseMove={handleMouseMove}
-        onMouseEnter={() => setIsHoveringCard(true)}
-        onMouseLeave={() => setIsHoveringCard(false)}
-      >
-        {/* Efecto de luz siguiendo el cursor */}
-        {isHoveringCard && (
-          <div
-            className="absolute w-[300px] h-[300px] -translate-x-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-300"
-            style={{
-              left: `${mousePosition.x}px`,
-              top: `${mousePosition.y}px`,
-              background: 'radial-gradient(circle, rgba(113,120,91,0.15) 0%, transparent 70%)',
-              opacity: 0.6,
-            }}
-          />
-        )}
-
-        {/* Bordes brillantes animados */}
-        <div className="absolute inset-0 rounded-lg overflow-hidden pointer-events-none">
-          <div className="absolute -top-px left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent animate-shimmer-fast" />
-          <div className="absolute -bottom-px left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[#7C4A36] to-transparent animate-shimmer-fast-delayed" />
-          <div className="absolute top-0 -left-px bottom-0 w-[2px] bg-gradient-to-b from-transparent via-primary/50 to-transparent animate-shimmer-vertical" />
-          <div className="absolute top-0 -right-px bottom-0 w-[2px] bg-gradient-to-b from-transparent via-[#7C4A36]/50 to-transparent animate-shimmer-vertical-delayed" />
-        </div>
+      {/* Panel Derecho - Formulario */}
+      <div className="w-full lg:w-[58%] flex items-center justify-center p-4 sm:p-6 lg:p-12 bg-white relative overflow-hidden">
+        {/* Lucesitas verdes brillantes flotantes */}
+        <div className="absolute top-10 left-10 w-3 h-3 bg-[#7a8c7a] rounded-full animate-glow shadow-glow-sm" style={{ animationDelay: '0s', animationDuration: '3s' }} />
+        <div className="absolute top-20 right-20 w-2.5 h-2.5 bg-[#8b9d8a] rounded-full animate-glow shadow-glow-md" style={{ animationDelay: '1s', animationDuration: '4s' }} />
+        <div className="absolute bottom-32 left-16 w-2 h-2 bg-[#9db09c] rounded-full animate-glow shadow-glow-sm" style={{ animationDelay: '2s', animationDuration: '5s' }} />
+        <div className="absolute top-40 right-32 w-4 h-4 bg-[#6a7c6a] rounded-full animate-glow shadow-glow-lg" style={{ animationDelay: '0.5s', animationDuration: '3.5s' }} />
+        <div className="absolute bottom-20 right-16 w-2.5 h-2.5 bg-[#7a8c7a] rounded-full animate-glow shadow-glow-md" style={{ animationDelay: '1.5s', animationDuration: '4.5s' }} />
+        <div className="absolute top-1/3 left-1/4 w-3 h-3 bg-[#8b9d8a] rounded-full animate-glow shadow-glow-sm" style={{ animationDelay: '2.5s', animationDuration: '3.8s' }} />
+        <div className="absolute bottom-1/3 right-1/4 w-3.5 h-3.5 bg-[#6a7c6a] rounded-full animate-glow shadow-glow-lg" style={{ animationDelay: '1.8s', animationDuration: '4.2s' }} />
+        <div className="absolute top-1/4 right-1/3 w-2.5 h-2.5 bg-[#9db09c] rounded-full animate-glow shadow-glow-md" style={{ animationDelay: '3s', animationDuration: '4.8s' }} />
+        <div className="absolute bottom-1/4 left-1/3 w-2 h-2 bg-[#7a8c7a] rounded-full animate-glow shadow-glow-sm" style={{ animationDelay: '2.2s', animationDuration: '3.6s' }} />
+        <div className="absolute top-60 left-40 w-3.5 h-3.5 bg-[#8b9d8a] rounded-full animate-glow shadow-glow-lg" style={{ animationDelay: '1.2s', animationDuration: '4.4s' }} />
+        <div className="absolute bottom-48 right-48 w-2 h-2 bg-[#6a7c6a] rounded-full animate-glow shadow-glow-md" style={{ animationDelay: '2.8s', animationDuration: '3.2s' }} />
+        <div className="absolute top-1/2 left-20 w-2.5 h-2.5 bg-[#9db09c] rounded-full animate-glow shadow-glow-sm" style={{ animationDelay: '0.8s', animationDuration: '4.6s' }} />
+        <div className="absolute bottom-1/2 right-40 w-3 h-3 bg-[#7a8c7a] rounded-full animate-glow shadow-glow-lg" style={{ animationDelay: '2.3s', animationDuration: '3.9s' }} />
+        <div className="absolute top-3/4 left-1/2 w-2 h-2 bg-[#8b9d8a] rounded-full animate-glow shadow-glow-md" style={{ animationDelay: '1.7s', animationDuration: '4.1s' }} />
+        <div className="absolute bottom-16 left-24 w-3.5 h-3.5 bg-[#6a7c6a] rounded-full animate-glow shadow-glow-lg" style={{ animationDelay: '3.2s', animationDuration: '3.4s' }} />
         
-        {/* Resplandor interno animado */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.03] via-transparent to-[#7C4A36]/[0.03] opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+        {/* Lucesitas más grandes con resplandor intenso */}
+        <div className="absolute top-32 right-16 w-5 h-5 bg-[#7a8c7a] rounded-full animate-glow-pulse shadow-glow-xl" style={{ animationDelay: '0s' }} />
+        <div className="absolute bottom-40 left-40 w-4 h-4 bg-[#8b9d8a] rounded-full animate-glow-pulse shadow-glow-xl" style={{ animationDelay: '1.5s' }} />
+        <div className="absolute top-1/2 right-1/4 w-5 h-5 bg-[#6a7c6a] rounded-full animate-glow-pulse shadow-glow-xl" style={{ animationDelay: '3s' }} />
         
-        <CardHeader className="space-y-4 text-center relative z-10 pt-6 pb-4">
-          {/* Icono compacto */}
-          <div className="relative mx-auto w-20 h-20 group/icon">
-            {/* Anillos pulsantes */}
-            <div className="absolute -inset-3 rounded-full bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20 blur-md animate-pulse-ring-1" />
-            <div className="absolute -inset-2 rounded-full bg-gradient-to-r from-primary/15 via-primary/30 to-primary/15 blur-sm animate-pulse-ring-2" />
-            
-            {/* Círculo principal */}
-            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-primary via-primary/95 to-primary/80 shadow-[0_15px_40px_rgba(113,120,91,0.4)] transition-all duration-700 group-hover/icon:scale-110 group-hover/icon:rotate-[360deg]">
-              <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/40 via-transparent to-transparent opacity-50" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Shield className="w-10 h-10 text-white animate-shield-breathe drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]" />
+        {/* Estrellas brillantes verdes */}
+        <div className="absolute top-16 right-40 text-[#7a8c7a] animate-sparkle-bright text-2xl drop-shadow-glow" style={{ animationDelay: '0s' }}>✦</div>
+        <div className="absolute bottom-40 left-32 text-[#8b9d8a] animate-sparkle-bright text-xl drop-shadow-glow" style={{ animationDelay: '1.5s' }}>✦</div>
+        <div className="absolute top-1/2 right-24 text-[#9db09c] animate-sparkle-bright text-2xl drop-shadow-glow" style={{ animationDelay: '2.5s' }}>✦</div>
+        <div className="absolute top-32 left-1/4 text-[#6a7c6a] animate-sparkle-bright text-xl drop-shadow-glow" style={{ animationDelay: '3.5s' }}>✦</div>
+        <div className="absolute bottom-24 right-1/3 text-[#7a8c7a] animate-sparkle-bright text-2xl drop-shadow-glow" style={{ animationDelay: '1s' }}>✦</div>
+        
+        <Card className="w-full max-w-md shadow-2xl border-0 bg-[#8b9d8a]/95 backdrop-blur-md relative z-10 overflow-hidden rounded-3xl">
+          {/* Borde brillante sutil */}
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-white/5 pointer-events-none" />
+          
+          <CardContent className="p-10 sm:p-12 lg:p-14 space-y-6 relative">
+            {/* Logo y Títulos */}
+            <div className="flex flex-col items-center mb-4 animate-in fade-in slide-in-from-top-4 duration-700">
+              {/* Logo circular con estrellas decorativas */}
+              <div className="relative mb-6">
+                <div className="absolute -top-2 -right-2 text-white/30 animate-sparkle text-sm" style={{ animationDelay: '0s' }}>✦</div>
+                <div className="absolute -bottom-1 -left-1 text-white/20 animate-sparkle text-xs" style={{ animationDelay: '1s' }}>✦</div>
+                <div className="w-24 h-24 rounded-full bg-[#7a8c7a] flex items-center justify-center shadow-xl transform hover:scale-105 transition-all duration-300 border-4 border-white/30">
+                  <Shield className="w-12 h-12 text-white" />
+                </div>
+              </div>
+              
+              {/* Título REPOPA */}
+              <h1 className="text-3xl font-black text-white tracking-wider mb-2">REPOPA</h1>
+              
+              {/* Subtítulo */}
+              <p className="text-xs text-white/90 text-center px-4 leading-relaxed mb-3 font-medium">
+                Registro Público de Organismos<br />Públicos Auxiliares
+              </p>
+              
+              {/* Divisor con iconos */}
+              <div className="flex items-center gap-3 my-4">
+                <div className="h-px w-12 bg-white/30"></div>
+                <Shield className="w-3 h-3 text-white/50" />
+                <div className="text-[10px] text-white/70 font-semibold tracking-wider">Procuraduría Fiscal</div>
+                <Shield className="w-3 h-3 text-white/50" />
+                <div className="h-px w-12 bg-white/30"></div>
+              </div>
+              
+              {/* Badge del Gobierno */}
+              <div className="flex items-center gap-2 bg-white/15 backdrop-blur-sm px-4 py-2 rounded-full border border-white/20 shadow-lg">
+                <span className="text-[10px] text-white font-semibold tracking-wide">Gobierno del Estado de Morelos</span>
               </div>
             </div>
-            
-            {/* Partículas orbitantes */}
-            <Sparkles className="absolute -top-3 -right-3 w-5 h-5 text-primary/80 animate-orbit-1" />
-            <Sparkles className="absolute -bottom-2 -left-3 w-4 h-4 text-primary/60 animate-orbit-2" />
-            <Fingerprint className="absolute -bottom-3 -right-2 w-4 h-4 text-[#7C4A36]/70 animate-orbit-4" />
-            
-            <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/30 to-transparent opacity-0 group-hover/icon:opacity-100 transition-opacity duration-500 animate-rotate-shine" />
-          </div>
 
-          <div className="space-y-3">
-            {/* Título compacto */}
-            <div className="relative inline-block">
-              <CardTitle className="text-4xl font-black bg-gradient-to-r from-[#2E3B2B] via-[#4a5a3d] to-[#7C4A36] bg-clip-text text-transparent animate-text-shimmer-slow bg-[length:300%_auto]">
-                REPOPA
-              </CardTitle>
-            </div>
-            
-            <CardDescription className="text-sm leading-relaxed font-semibold text-gray-700">
-              Registro Público de Organismos<br />Públicos Auxiliares
-            </CardDescription>
-            
-            {/* Separador compacto */}
-            <div className="flex items-center justify-center gap-3 py-1">
-              <div className="h-[2px] w-16 bg-gradient-to-r from-transparent via-primary/60 to-primary rounded-full animate-pulse-width" />
-              <Shield className="w-3 h-3 text-primary animate-bounce-gentle" />
-              <span className="font-bold text-xs bg-gradient-to-r from-primary to-[#7C4A36] bg-clip-text text-transparent">
-                Procuraduría Fiscal
-              </span>
-              <Shield className="w-3 h-3 text-primary animate-bounce-gentle" style={{ animationDelay: '0.2s' }} />
-              <div className="h-[2px] w-16 bg-gradient-to-l from-transparent via-[#7C4A36]/60 to-[#7C4A36] rounded-full animate-pulse-width" style={{ animationDelay: '0.5s' }} />
-            </div>
-            
-            {/* Badge compacto */}
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-primary/10 via-primary/5 to-[#7C4A36]/10 border border-primary/20 shadow-md shadow-primary/10 backdrop-blur-sm hover:scale-105 transition-transform duration-300">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-lg shadow-green-500/50" />
-              <p className="text-[11px] font-bold bg-gradient-to-r from-gray-700 to-gray-600 bg-clip-text text-transparent">
-                Gobierno del Estado de Morelos
-              </p>
-              <Sparkles className="w-2.5 h-2.5 text-primary/60 animate-spin-slow" />
-            </div>
-          </div>
-        </CardHeader>
+            <form onSubmit={handleLogin} className="space-y-5">
+              {error && (
+                <Alert variant="destructive" className="border-red-400 bg-red-500/90 backdrop-blur-sm animate-in fade-in slide-in-from-top-2 duration-300 rounded-2xl">
+                  <AlertCircle className="h-5 w-5 text-white" />
+                  <AlertDescription className="font-medium text-sm ml-2 text-white">{error}</AlertDescription>
+                </Alert>
+              )}
 
-        <CardContent className="space-y-5 relative z-10 pb-6 px-6">
-          <form onSubmit={handleLogin} className="space-y-4">
-            {error && (
-              <Alert variant="destructive" className="animate-shake-intense border-2 border-red-300 bg-gradient-to-r from-red-50 to-red-100 shadow-lg shadow-red-200/50">
-                <AlertCircle className="h-4 w-4 animate-pulse" />
-                <AlertDescription className="font-semibold text-sm text-red-800">{error}</AlertDescription>
-              </Alert>
-            )}
-
-            {/* Campo de email COMPACTO */}
-            <div className="space-y-2">
-              <Label 
-                htmlFor="email" 
-                className={`transition-all duration-300 font-bold text-xs flex items-center gap-1.5 ${
-                  focusedField === 'email' ? 'text-primary scale-105' : 'text-gray-700'
-                }`}
-              >
-                <Mail className="w-3.5 h-3.5" />
-                Correo Electrónico
-              </Label>
-              <div className="relative group/input">
-                <div className={`absolute -inset-1 bg-gradient-to-r from-primary via-primary/60 to-primary rounded-lg blur-lg opacity-0 group-focus-within/input:opacity-40 transition-all duration-500`} />
-                
-                <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-primary/50 via-transparent to-primary/50 opacity-0 group-focus-within/input:opacity-100 transition-opacity duration-300 p-[2px]">
-                  <div className="w-full h-full bg-white rounded-[7px]" />
+              {/* Campo de Correo Electrónico */}
+              <div className="space-y-2 animate-in fade-in slide-in-from-right-4 duration-500" style={{ animationDelay: '100ms' }}>
+                <div className="flex items-center gap-2 pl-1">
+                  <Mail className="w-4 h-4 text-white/80" />
+                  <Label htmlFor="email" className="text-xs font-semibold text-white/90 tracking-wide">
+                    Correo Electrónico
+                  </Label>
                 </div>
-                
                 <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-300 ${
-                      focusedField === 'email' 
-                        ? 'bg-primary/10 scale-110' 
-                        : 'bg-gray-100'
-                    }`}>
-                      <Mail className={`w-3.5 h-3.5 transition-all duration-300 ${
-                        focusedField === 'email' ? 'text-primary' : 'text-gray-500'
-                      }`} />
-                    </div>
-                    <div className="w-px h-5 bg-gray-200" />
-                  </div>
-                  
                   <Input
                     id="email"
                     type="email"
                     placeholder="usuario@morelos.gob.mx"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    onFocus={() => setFocusedField('email')}
-                    onBlur={() => setFocusedField(null)}
-                    className="pl-16 pr-3 h-11 text-sm transition-all duration-300 focus:ring-0 border-2 border-gray-200 focus:border-primary bg-white hover:bg-gray-50 focus:bg-white rounded-lg font-medium"
+                    className="h-12 pl-11 pr-4 bg-white/95 border-0 focus:bg-white rounded-xl transition-all duration-300 text-sm font-medium placeholder:text-gray-400 shadow-lg focus:shadow-xl text-gray-700 focus:ring-2 focus:ring-white/50"
                     required
                   />
-                  
-                  {email && email.includes('@') && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center animate-scale-in">
-                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                    </div>
-                  )}
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                    <Mail className="w-4 h-4" />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Campo de contraseña COMPACTO */}
-            <div className="space-y-2">
-              <Label 
-                htmlFor="password"
-                className={`transition-all duration-300 font-bold text-xs flex items-center gap-1.5 ${
-                  focusedField === 'password' ? 'text-primary scale-105' : 'text-gray-700'
-                }`}
-              >
-                <Lock className="w-3.5 h-3.5" />
-                Contraseña
-              </Label>
-              <div className="relative group/input">
-                <div className={`absolute -inset-1 bg-gradient-to-r from-primary via-primary/60 to-primary rounded-lg blur-lg opacity-0 group-focus-within/input:opacity-40 transition-all duration-500`} />
-                
-                <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-primary/50 via-transparent to-primary/50 opacity-0 group-focus-within/input:opacity-100 transition-opacity duration-300 p-[2px]">
-                  <div className="w-full h-full bg-white rounded-[7px]" />
+              {/* Campo de Contraseña */}
+              <div className="space-y-2 animate-in fade-in slide-in-from-right-4 duration-500" style={{ animationDelay: '200ms' }}>
+                <div className="flex items-center gap-2 pl-1">
+                  <Lock className="w-4 h-4 text-white/80" />
+                  <Label htmlFor="password" className="text-xs font-semibold text-white/90 tracking-wide">
+                    Contraseña
+                  </Label>
                 </div>
-                
                 <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-300 ${
-                      focusedField === 'password' 
-                        ? 'bg-primary/10 scale-110' 
-                        : 'bg-gray-100'
-                    }`}>
-                      <Lock className={`w-3.5 h-3.5 transition-all duration-300 ${
-                        focusedField === 'password' ? 'text-primary' : 'text-gray-500'
-                      }`} />
-                    </div>
-                    <div className="w-px h-5 bg-gray-200" />
-                  </div>
-                  
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onFocus={() => setFocusedField('password')}
-                    onBlur={() => setFocusedField(null)}
-                    className="pl-16 pr-12 h-11 text-sm transition-all duration-300 focus:ring-0 border-2 border-gray-200 focus:border-primary bg-white hover:bg-gray-50 focus:bg-white rounded-lg font-medium"
+                    onChange={handlePasswordChange}
+                    className={`h-12 pl-11 pr-12 bg-white/95 border-0 ${
+                      passwordValid === null 
+                        ? 'focus:bg-white' 
+                        : passwordValid 
+                        ? 'bg-green-50 focus:bg-green-50 ring-2 ring-green-400/50' 
+                        : 'bg-red-50 focus:bg-red-50 ring-2 ring-red-400/50'
+                    } rounded-xl transition-all duration-300 text-sm font-medium placeholder:text-gray-400 shadow-lg focus:shadow-xl text-gray-700 focus:ring-2 focus:ring-white/50`}
                     required
                   />
-                  
+                  <div className={`absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-300 ${
+                    passwordValid === null 
+                      ? 'text-gray-400' 
+                      : passwordValid 
+                      ? 'text-green-600' 
+                      : 'text-red-600'
+                  }`}>
+                    <Lock className="w-4 h-4" />
+                  </div>
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-primary hover:bg-primary/10 transition-all duration-200 group"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-1.5 hover:bg-gray-100 rounded-lg"
                   >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    ) : (
-                      <Eye className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    )}
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
-
-                  {password && (
-                    <div className="absolute -bottom-5 left-0 right-0">
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4].map((level) => (
-                          <div
-                            key={level}
-                            className={`h-0.5 flex-1 rounded-full transition-all duration-300 ${
-                              password.length >= level * 2
-                                ? password.length >= 8
-                                  ? 'bg-green-500'
-                                  : password.length >= 6
-                                  ? 'bg-yellow-500'
-                                  : 'bg-red-500'
-                                : 'bg-gray-200'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
-              </div>
-            </div>
-
-            {/* Botón COMPACTO */}
-            <Button 
-              type="submit" 
-              className="w-full h-11 relative overflow-hidden group/btn disabled:opacity-50 transition-all duration-500 hover:shadow-[0_15px_40px_rgba(113,120,91,0.4)] hover:scale-[1.02] bg-gradient-to-r from-primary via-primary to-primary/90 hover:from-primary/90 hover:via-primary hover:to-primary text-sm font-bold mt-6 rounded-lg border-0"
-              disabled={loading}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/30 to-white/0 -translate-x-full group-hover/btn:translate-x-full transition-transform duration-1000" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300" />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(255,255,255,0.2),transparent_50%)]" />
-              
-              <div className="absolute inset-0 overflow-hidden">
-                {[...Array(5)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="absolute w-0.5 h-0.5 bg-white rounded-full opacity-0 group-hover/btn:opacity-100 group-hover/btn:animate-particle-rise"
-                    style={{
-                      left: `${20 + i * 15}%`,
-                      bottom: '0',
-                      animationDelay: `${i * 0.1}s`,
-                    }}
-                  />
-                ))}
-              </div>
-              
-              <span className="relative z-10 flex items-center justify-center gap-2">
-                {loading ? (
-                  <>
-                    <div className="relative w-4 h-4">
-                      <div className="absolute inset-0 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <div className="absolute inset-0.5 border-2 border-white/20 border-t-white rounded-full animate-spin-reverse" />
-                    </div>
-                    <span className="animate-pulse font-black tracking-wide">INGRESANDO...</span>
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4 group-hover/btn:rotate-[360deg] transition-transform duration-700" />
-                    <span className="font-black tracking-wide">INICIAR SESIÓN</span>
-                    <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform duration-300" />
-                  </>
+                {/* Mensaje de validación */}
+                {password.length > 0 && password.length < 6 && (
+                  <p className="text-[10px] text-red-200 pl-1 animate-in fade-in slide-in-from-top-1 duration-200 font-medium">
+                    ⚠ La contraseña debe tener al menos 6 caracteres
+                  </p>
                 )}
-              </span>
+                {passwordValid && (
+                  <p className="text-[10px] text-green-200 pl-1 animate-in fade-in slide-in-from-top-1 duration-200 font-medium">
+                    ✓ Contraseña válida
+                  </p>
+                )}
+              </div>
 
-              <div className="absolute -bottom-px left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent" />
-            </Button>
-          </form>
+              {/* Botón de login */}
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-2" style={{ animationDelay: '300ms' }}>
+                <Button 
+                  type="submit" 
+                  className="w-full h-12 bg-gradient-to-r from-[#5a6c5a] to-[#4a5c4a] hover:from-[#4a5c4a] hover:to-[#3a4c3a] text-white font-bold text-sm tracking-widest rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-[1.01] active:scale-[0.99] uppercase flex items-center justify-center gap-2"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>INGRESANDO...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="w-4 h-4" />
+                      <span>INICIAR SESIÓN</span>
+                      <span className="text-lg">→</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
 
-          {/* Footer COMPACTO */}
-          <div className="pt-4 mt-2">
-            <div className="relative overflow-hidden rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200/60 shadow-md shadow-green-100/30 backdrop-blur-sm p-2 group/security hover:scale-[1.01] transition-transform duration-300">
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover/security:translate-x-full transition-transform duration-1000" />
-              
-              <div className="relative flex items-center justify-center gap-1.5">
-                <Shield className="w-3.5 h-3.5 text-green-600" />
-                <p className="text-xs font-bold text-green-700">
-                  Sitio Seguro
-                </p>
-                <div className="w-1 h-1 rounded-full bg-green-500 animate-pulse" />
+            {/* Indicador de conexión segura */}
+            <div className="pt-4 animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: '400ms' }}>
+              <div className="flex items-center justify-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2.5 rounded-full border border-white/20">
+                <Shield className="w-3.5 h-3.5 text-white" />
+                <span className="text-[10px] text-white font-semibold tracking-wider">Sitio Seguro</span>
               </div>
             </div>
-          </div>
-        </CardContent>
+          </CardContent>
+        </Card>
+      </div>
 
-        <div className="absolute -bottom-px left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[#7C4A36]/60 to-transparent rounded-full" />
-      </Card>
-
-      <style jsx>{`
-        @keyframes float-3d {
+      <style jsx global>{`
+        @keyframes glow {
           0%, 100% {
-            transform: translate3d(0, 0, 0) rotate(0deg);
-            opacity: 0.2;
-          }
-          25% {
-            opacity: 0.5;
+            transform: translateY(0px) scale(1);
+            opacity: 0.6;
+            box-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor;
           }
           50% {
-            transform: translate3d(-20px, -30px, 20px) rotate(180deg);
-            opacity: 0.8;
-          }
-          75% {
-            opacity: 0.5;
+            transform: translateY(-30px) scale(1.2);
+            opacity: 1;
+            box-shadow: 0 0 20px currentColor, 0 0 40px currentColor, 0 0 60px currentColor;
           }
         }
-
-        @keyframes twinkle-star {
+        
+        @keyframes glow-pulse {
           0%, 100% {
-            opacity: 0.2;
+            opacity: 0.4;
             transform: scale(1);
+            box-shadow: 0 0 15px currentColor, 0 0 30px currentColor, 0 0 45px currentColor;
           }
           50% {
             opacity: 1;
             transform: scale(1.5);
+            box-shadow: 0 0 30px currentColor, 0 0 60px currentColor, 0 0 90px currentColor;
           }
         }
-
-        @keyframes card-entrance {
-          from {
-            opacity: 0;
-            transform: translateY(60px) scale(0.9) rotateX(20deg);
-            filter: blur(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1) rotateX(0deg);
-            filter: blur(0px);
-          }
-        }
-
-        @keyframes shimmer-fast {
-          0% {
-            transform: translateX(-100%);
-          }
-          100% {
-            transform: translateX(100%);
-          }
-        }
-
-        @keyframes shimmer-fast-delayed {
-          0% {
-            transform: translateX(-100%);
-          }
-          100% {
-            transform: translateX(100%);
-          }
-        }
-
-        @keyframes shimmer-vertical {
-          0% {
-            transform: translateY(-100%);
-          }
-          100% {
-            transform: translateY(100%);
-          }
-        }
-
-        @keyframes shimmer-vertical-delayed {
-          0% {
-            transform: translateY(-100%);
-          }
-          100% {
-            transform: translateY(100%);
-          }
-        }
-
-        @keyframes pulse-ring-1 {
-          0%, 100% {
-            transform: scale(1);
-            opacity: 0.3;
-          }
-          50% {
-            transform: scale(1.2);
-            opacity: 0.6;
-          }
-        }
-
-        @keyframes pulse-ring-2 {
-          0%, 100% {
-            transform: scale(1);
-            opacity: 0.25;
-          }
-          50% {
-            transform: scale(1.25);
-            opacity: 0.5;
-          }
-        }
-
-        @keyframes shield-breathe {
-          0%, 100% {
-            transform: scale(1);
-            filter: drop-shadow(0 0 8px rgba(255,255,255,0.6));
-          }
-          50% {
-            transform: scale(1.05);
-            filter: drop-shadow(0 0 15px rgba(255,255,255,0.9));
-          }
-        }
-
-        @keyframes orbit-1 {
-          0% {
-            transform: rotate(0deg) translateX(45px) rotate(0deg);
-            opacity: 0.4;
-          }
-          50% {
-            opacity: 1;
-          }
-          100% {
-            transform: rotate(360deg) translateX(45px) rotate(-360deg);
-            opacity: 0.4;
-          }
-        }
-
-        @keyframes orbit-2 {
-          0% {
-            transform: rotate(90deg) translateX(42px) rotate(-90deg);
-            opacity: 0.3;
-          }
-          50% {
-            opacity: 0.9;
-          }
-          100% {
-            transform: rotate(450deg) translateX(42px) rotate(-450deg);
-            opacity: 0.3;
-          }
-        }
-
-        @keyframes orbit-4 {
-          0% {
-            transform: rotate(270deg) translateX(44px) rotate(-270deg);
-            opacity: 0.4;
-          }
-          50% {
-            opacity: 0.95;
-          }
-          100% {
-            transform: rotate(630deg) translateX(44px) rotate(-630deg);
-            opacity: 0.4;
-          }
-        }
-
-        @keyframes rotate-shine {
-          from {
-            transform: rotate(0deg);
-          }
-          to {
-            transform: rotate(360deg);
-          }
-        }
-
-        @keyframes text-shimmer-slow {
-          0% {
-            background-position: 0% center;
-          }
-          100% {
-            background-position: 200% center;
-          }
-        }
-
-        @keyframes pulse-width {
-          0%, 100% {
-            width: 4rem;
-            opacity: 0.6;
-          }
-          50% {
-            width: 5rem;
-            opacity: 1;
-          }
-        }
-
-        @keyframes bounce-gentle {
-          0%, 100% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(-3px);
-          }
-        }
-
-        @keyframes spin-slow {
-          from {
-            transform: rotate(0deg);
-          }
-          to {
-            transform: rotate(360deg);
-          }
-        }
-
-        @keyframes shake-intense {
-          0%, 100% { transform: translateX(0) rotate(0deg); }
-          10% { transform: translateX(-8px) rotate(-1deg); }
-          20% { transform: translateX(8px) rotate(1deg); }
-          30% { transform: translateX(-8px) rotate(-1deg); }
-          40% { transform: translateX(8px) rotate(1deg); }
-          50% { transform: translateX(-8px) rotate(-1deg); }
-          60% { transform: translateX(8px) rotate(1deg); }
-          70% { transform: translateX(-8px) rotate(-1deg); }
-          80% { transform: translateX(8px) rotate(1deg); }
-          90% { transform: translateX(-8px) rotate(-1deg); }
-        }
-
-        @keyframes scale-in {
-          from {
-            transform: scale(0);
-            opacity: 0;
-          }
-          to {
-            transform: scale(1);
-            opacity: 1;
-          }
-        }
-
-        @keyframes particle-rise {
-          0% {
-            transform: translateY(0) scale(0);
-            opacity: 0;
-          }
-          50% {
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(-25px) scale(1);
-            opacity: 0;
-          }
-        }
-
-        @keyframes spin-reverse {
-          from {
-            transform: rotate(360deg);
-          }
-          to {
-            transform: rotate(0deg);
-          }
-        }
-
-        @keyframes gradient-rotate {
-          0% {
-            transform: rotate(0deg);
-          }
-          100% {
-            transform: rotate(360deg);
-          }
-        }
-
-        @keyframes pulse-subtle {
+        
+        @keyframes sparkle-bright {
           0%, 100% {
             opacity: 0.5;
+            transform: scale(0.8) rotate(0deg);
+            filter: drop-shadow(0 0 8px currentColor) drop-shadow(0 0 16px currentColor);
           }
           50% {
-            opacity: 0.8;
+            opacity: 1;
+            transform: scale(1.3) rotate(180deg);
+            filter: drop-shadow(0 0 16px currentColor) drop-shadow(0 0 32px currentColor);
           }
         }
-
-        @keyframes float-ambient {
-          0%, 100% {
-            transform: translate(0, 0) scale(1);
-            opacity: 0.3;
-          }
-          50% {
-            transform: translate(-30px, -40px) scale(1.1);
-            opacity: 0.5;
-          }
+        
+        .animate-glow {
+          animation: glow 3s ease-in-out infinite;
         }
-
-        @keyframes float-ambient-delayed {
-          0%, 100% {
-            transform: translate(0, 0) scale(1);
-            opacity: 0.25;
-          }
-          50% {
-            transform: translate(40px, -30px) scale(1.15);
-            opacity: 0.45;
-          }
+        
+        .animate-glow-pulse {
+          animation: glow-pulse 2s ease-in-out infinite;
         }
-
-        @keyframes pulse-glow {
-          0%, 100% {
-            opacity: 0.2;
-            transform: scale(1);
-          }
-          50% {
-            opacity: 0.4;
-            transform: scale(1.1);
-          }
+        
+        .animate-sparkle-bright {
+          animation: sparkle-bright 2.5s ease-in-out infinite;
         }
-
-        @keyframes grid-move {
-          0% {
-            background-position: 0 0;
-          }
-          100% {
-            background-position: 50px 50px;
-          }
+        
+        .shadow-glow-sm {
+          box-shadow: 0 0 10px #7a8c7a, 0 0 20px #7a8c7a;
         }
-
-        .animate-float-3d {
-          animation: float-3d ease-in-out infinite;
+        
+        .shadow-glow-md {
+          box-shadow: 0 0 15px #8b9d8a, 0 0 30px #8b9d8a;
         }
-
-        .animate-twinkle-star {
-          animation: twinkle-star ease-in-out infinite;
+        
+        .shadow-glow-lg {
+          box-shadow: 0 0 20px #6a7c6a, 0 0 40px #6a7c6a;
         }
-
-        .animate-card-entrance {
-          animation: card-entrance 1s cubic-bezier(0.16, 1, 0.3, 1);
+        
+        .shadow-glow-xl {
+          box-shadow: 0 0 25px #7a8c7a, 0 0 50px #7a8c7a, 0 0 75px #7a8c7a;
         }
-
-        .animate-shimmer-fast {
-          animation: shimmer-fast 2s linear infinite;
-        }
-
-        .animate-shimmer-fast-delayed {
-          animation: shimmer-fast-delayed 2s linear infinite;
-          animation-delay: 1s;
-        }
-
-        .animate-shimmer-vertical {
-          animation: shimmer-vertical 3s linear infinite;
-        }
-
-        .animate-shimmer-vertical-delayed {
-          animation: shimmer-vertical-delayed 3s linear infinite;
-          animation-delay: 1.5s;
-        }
-
-        .animate-pulse-ring-1 {
-          animation: pulse-ring-1 3s ease-in-out infinite;
-        }
-
-        .animate-pulse-ring-2 {
-          animation: pulse-ring-2 3s ease-in-out infinite;
-          animation-delay: 0.3s;
-        }
-
-        .animate-shield-breathe {
-          animation: shield-breathe 3s ease-in-out infinite;
-        }
-
-        .animate-orbit-1 {
-          animation: orbit-1 8s linear infinite;
-        }
-
-        .animate-orbit-2 {
-          animation: orbit-2 10s linear infinite;
-        }
-
-        .animate-orbit-4 {
-          animation: orbit-4 11s linear infinite;
-        }
-
-        .animate-rotate-shine {
-          animation: rotate-shine 3s linear infinite;
-        }
-
-        .animate-text-shimmer-slow {
-          animation: text-shimmer-slow 5s linear infinite;
-        }
-
-        .animate-pulse-width {
-          animation: pulse-width 2s ease-in-out infinite;
-        }
-
-        .animate-bounce-gentle {
-          animation: bounce-gentle 2s ease-in-out infinite;
-        }
-
-        .animate-spin-slow {
-          animation: spin-slow 3s linear infinite;
-        }
-
-        .animate-shake-intense {
-          animation: shake-intense 0.6s ease-in-out;
-        }
-
-        .animate-scale-in {
-          animation: scale-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        .animate-particle-rise {
-          animation: particle-rise 2s ease-out infinite;
-        }
-
-        .animate-spin-reverse {
-          animation: spin-reverse 1s linear infinite;
-        }
-
-        .animate-gradient-rotate {
-          animation: gradient-rotate 20s linear infinite;
-        }
-
-        .animate-pulse-subtle {
-          animation: pulse-subtle 4s ease-in-out infinite;
-        }
-
-        .animate-float-ambient {
-          animation: float-ambient 12s ease-in-out infinite;
-        }
-
-        .animate-float-ambient-delayed {
-          animation: float-ambient-delayed 15s ease-in-out infinite;
-          animation-delay: 2s;
-        }
-
-        .animate-pulse-glow {
-          animation: pulse-glow 8s ease-in-out infinite;
-        }
-
-        .animate-grid-move {
-          animation: grid-move 20s linear infinite;
+        
+        .drop-shadow-glow {
+          filter: drop-shadow(0 0 10px currentColor) drop-shadow(0 0 20px currentColor);
         }
       `}</style>
     </div>
