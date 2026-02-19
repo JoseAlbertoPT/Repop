@@ -380,8 +380,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     onFocus={() => setFocusedField('password')}
                     onBlur={() => setFocusedField(null)}
-                    className="pl-16 pr-12 h-11 text-sm transition-all duration-300 focus:ring-0 border-2 border-gray-200 focus:border-primary bg-white hover:bg-gray-50 focus:bg-white rounded-lg font-medium"
-                    required
+className="pl-16 pr-12 h-11 text-sm transition-all duration-300 focus:ring-0 border-2 border-gray-200 focus:border-primary bg-white hover:bg-gray-50 focus:bg-white rounded-lg font-medium [&::-ms-reveal]:hidden [&::-webkit-credentials-auto-fill-button]:hidden"                    required
                     disabled={loading}
                   />
                   

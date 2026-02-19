@@ -341,9 +341,9 @@ export default function UsersPage() {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })} 
                     placeholder="Contraseña de acceso"
-                  />
+                   autoComplete="new-password"                  />
                   <Button
                     type="button"
                     variant="ghost"
@@ -455,7 +455,8 @@ export default function UsersPage() {
                   placeholder="Buscar usuario..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 w-full sm:w-64"
+                 className="pl-9 w-full sm:w-64"
+                 autoComplete="off"
                 />
               </div>
               <Select value={filterRole} onValueChange={setFilterRole}>
@@ -575,8 +576,8 @@ export default function UsersPage() {
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder="Nueva contraseña (opcional)"
-                />
+placeholder="Nueva contraseña (opcional)"
+autoComplete="new-password"                />
                 <Button
                   type="button"
                   variant="ghost"
