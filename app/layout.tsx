@@ -13,24 +13,6 @@ export const metadata: Metadata = {
   title: "REPOPA - Sistema de Registro",
   description:
     "Sistema de Registro Público de Organismos Públicos Auxiliares - Gobierno del Estado de Morelos",
-  generator: "v0.app",
-  icons: {
-    icon: [
-      {
-        url: "/icon-light-32x32.png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/icon-dark-32x32.png",
-        media: "(prefers-color-scheme: dark)",
-      },
-      {
-        url: "/icon.svg",
-        type: "image/svg+xml",
-      },
-    ],
-    apple: "/apple-icon.png",
-  },
 }
 
 export default function RootLayout({
@@ -40,6 +22,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
+      <head>
+        <link rel="icon" href="data:," />
+        <link rel="shortcut icon" href="data:," />
+        <link rel="apple-touch-icon" href="data:," />
+      </head>
       <body className="font-sans antialiased">
         <ThemeProvider
           attribute="class"
@@ -47,7 +34,6 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {}
           <AppProvider>
             {children}
           </AppProvider>

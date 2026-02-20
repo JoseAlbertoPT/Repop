@@ -576,8 +576,9 @@ export default function UsersPage() {
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-placeholder="Nueva contraseña (opcional)"
-autoComplete="new-password"                />
+                placeholder="Nueva contraseña (opcional)"
+                autoComplete="new-password"             
+   />
                 <Button
                   type="button"
                   variant="ghost"
